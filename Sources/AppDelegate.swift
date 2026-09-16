@@ -2519,7 +2519,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         automationEngine: AutomationEngine,
         computerUseRuntimeService: ComputerUseRuntimeService
     ) {
-        captureSessionLaunchStateIfNeeded(); StartupBreadcrumbLog.append("appDelegate.configure.begin")
+        captureSessionLaunchStateIfNeeded()
         self.tabManager = tabManager
         if let tabDragTransferRegistryStorage {
             precondition(
@@ -3872,7 +3872,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             preserveExistingBackup: previousSessionLaunchWasUnclean
         )
         let sanitizedStartupSnapshot = loadStartupSessionSnapshotPruningCrashDiagnostics()
-        guard SessionRestorePolicy.shouldAttemptRestore(previousLaunchWasUnclean: previousSessionLaunchWasUnclean),
+        guard SessionRestorePolicy.shouldAttemptRestore(),
               !didHandleExplicitOpenIntentAtStartup else { return }
         startupSessionSnapshot = sanitizedStartupSnapshot
     }
