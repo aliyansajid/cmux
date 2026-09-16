@@ -3477,6 +3477,7 @@
 		D3284001A1B2C3D4E5F60718 /* TraditionalChineseIMENumpadRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3284002A1B2C3D4E5F60718 /* TraditionalChineseIMENumpadRegressionTests.swift */; };
 		468100000000000000000003 /* TypingHotPathRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 468100000000000000000004 /* TypingHotPathRegressionTests.swift */; };
 		A5001501 /* UITestRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001511 /* UITestRecorder.swift */; };
+		D1278802D1278802D1278802 /* UncleanSessionRestorePolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1278803D1278803D1278803 /* UncleanSessionRestorePolicyTests.swift */; };
 		A500120D /* UpdateLogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5001223 /* UpdateLogStore.swift */; };
 		F2000000A1B2C3D4E5F60718 /* UpdatePillReleaseVisibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2000001A1B2C3D4E5F60718 /* UpdatePillReleaseVisibilityTests.swift */; };
 		C0B4D9B0A1B2C3D4E5F60718 /* UpdatePillUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0B4D9B1A1B2C3D4E5F60718 /* UpdatePillUITests.swift */; };
@@ -7237,6 +7238,7 @@
 		D3284002A1B2C3D4E5F60718 /* TraditionalChineseIMENumpadRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraditionalChineseIMENumpadRegressionTests.swift; sourceTree = "<group>"; };
 		468100000000000000000004 /* TypingHotPathRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypingHotPathRegressionTests.swift; sourceTree = "<group>"; };
 		A5001511 /* UITestRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestRecorder.swift; sourceTree = "<group>"; };
+		D1278803D1278803D1278803 /* UncleanSessionRestorePolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UncleanSessionRestorePolicyTests.swift; sourceTree = "<group>"; };
 		A5001223 /* UpdateLogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Update/UpdateLogStore.swift; sourceTree = "<group>"; };
 		F2000001A1B2C3D4E5F60718 /* UpdatePillReleaseVisibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdatePillReleaseVisibilityTests.swift; sourceTree = "<group>"; };
 		C0B4D9B1A1B2C3D4E5F60718 /* UpdatePillUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdatePillUITests.swift; sourceTree = "<group>"; };
@@ -10542,6 +10544,7 @@
 					F6572033A1B2C3D4E5F60718 /* SurfaceResumeAgentHookDowngradeTests.swift */,
 					F6572043A1B2C3D4E5F60718 /* RestoredAgentShellActivityLivenessTests.swift */,
 					F5000001A1B2C3D4E5F60718 /* SessionPersistenceTests.swift */,
+				D1278803D1278803D1278803 /* UncleanSessionRestorePolicyTests.swift */,
 					851500000000000000000002 /* TerminalFontZoomSessionPersistenceTests.swift */,
 				A10557080000000000000002 /* TerminalConfigurationPresentationMetricsTests.swift */,
 					806600000000000000000001 /* SessionRestorableAgentSnapshotPermissionModeTests.swift */,
@@ -15711,6 +15714,7 @@
 				E30760060000000000000002 /* TmuxWorkspacePaneOverlayModelTests.swift in Sources */,
 				D3284001A1B2C3D4E5F60718 /* TraditionalChineseIMENumpadRegressionTests.swift in Sources */,
 				468100000000000000000003 /* TypingHotPathRegressionTests.swift in Sources */,
+				D1278802D1278802D1278802 /* UncleanSessionRestorePolicyTests.swift in Sources */,
 				F2000000A1B2C3D4E5F60718 /* UpdatePillReleaseVisibilityTests.swift in Sources */,
 				A36C009DF2E44501AA774136 /* VaultCheckpointForkTests.swift in Sources */,
 				C2A04B60729A4FA6B38C8BC1 /* VaultCheckpointHarnessTests.swift in Sources */,
