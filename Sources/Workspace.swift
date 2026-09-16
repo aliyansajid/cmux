@@ -183,6 +183,17 @@ extension Workspace {
             hasUnreadIndicator: hasWorkspaceUnreadIndicator,
             notifications: workspaceNotificationSnapshots.isEmpty ? nil : workspaceNotificationSnapshots,
             currentDirectory: currentDirectory,
+            workspaceDirectory: workspaceDirectory,
+            workspacePullRequest: workspacePullRequest.map {
+                SessionWorkspacePullRequestSnapshot(
+                    number: $0.number,
+                    label: $0.label,
+                    url: $0.url.absoluteString,
+                    status: $0.status.rawValue,
+                    branch: $0.branch,
+                    isStale: $0.isStale
+                )
+            },
             focusedPanelId: focusedPanelId,
             layout: layout,
             layoutMode: layoutMode.rawValue,
@@ -285,6 +296,7 @@ extension Workspace {
         if !normalizedCurrentDirectory.isEmpty {
             currentDirectory = normalizedCurrentDirectory
         }
+        setWorkspaceDirectory(snapshot.workspaceDirectory)
 
         // Restore the per-workspace environment before any surface is rebuilt so
         // every restored terminal (all of which spawn fresh shells — PTYs do not
@@ -362,6 +374,24 @@ extension Workspace {
         gitBranch = hasCloudProvenance
             ? nil
             : snapshot.gitBranch.map { SidebarGitBranchState(branch: $0.branch, isDirty: $0.isDirty) }
+        if let savedPullRequest = snapshot.workspacePullRequest,
+           let url = URL(string: savedPullRequest.url),
+           ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+           url.host?.isEmpty == false,
+           let status = SidebarPullRequestStatus(rawValue: savedPullRequest.status),
+           savedPullRequest.number > 0,
+           !savedPullRequest.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            setWorkspacePullRequest(
+                number: savedPullRequest.number,
+                label: savedPullRequest.label,
+                url: url,
+                status: status,
+                branch: savedPullRequest.branch,
+                isStale: savedPullRequest.isStale
+            )
+        } else {
+            clearWorkspacePullRequest()
+        }
 
         recomputeListeningPorts()
 
@@ -2710,7 +2740,7 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
             let oldDirectory = oldValue.trimmingCharacters(in: .whitespacesAndNewlines)
             let newDirectory = currentDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
             guard oldDirectory != newDirectory else { return }
-            scheduleExtensionSidebarProjectRootRefresh(for: currentDirectory)
+            scheduleExtensionSidebarProjectRootRefresh(for: workspaceDirectory ?? currentDirectory)
             // Notify the sidebar so anchor-cwd-driven group config (color,
             // icon, context menu, newWorkspacePlacement) refreshes even
             // when the anchor isn't the visible/selected workspace. Group
@@ -2723,6 +2753,9 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
             )
         }
     }
+    /// A user-assigned project directory for workspace-level context. Terminal
+    /// shell reports continue to update `currentDirectory` independently.
+    @Published private(set) var workspaceDirectory: String?
     @Published private(set) var extensionSidebarProjectRootPath: String?
     private var extensionSidebarProjectRootRefreshID: UInt64 = 0
     @Published private(set) var surfaceTabBarDirectory: String?
@@ -2758,7 +2791,7 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
         if let existing = _dockSplit { return existing }
         let store = DockSplitStore(
             workspaceId: id,
-            baseDirectoryProvider: { [weak self] in self?.currentDirectory },
+            baseDirectoryProvider: { [weak self] in self?.presentedWorkspaceDirectory },
             remoteBrowserSettingsProvider: { [weak self] in
                 guard let self else { return .local }
                 return DockRemoteBrowserSettings(
@@ -3072,9 +3105,37 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
         get { sidebarMetadata.pullRequest }
         set { sidebarMetadata.pullRequest = newValue }
     }
+    /// Pull request explicitly assigned to the workspace, independent of a
+    /// panel's shell-reported pull request.
+    @Published private(set) var workspacePullRequest: SidebarPullRequestState?
     var panelPullRequests: [UUID: SidebarPullRequestState] {
         get { sidebarMetadata.panelPullRequests }
         set { sidebarMetadata.panelPullRequests = newValue }
+    }
+
+    /// Sets the workspace-level pull request shown in the sidebar.
+    func setWorkspacePullRequest(
+        number: Int,
+        label: String,
+        url: URL,
+        status: SidebarPullRequestStatus = .open,
+        branch: String? = nil,
+        isStale: Bool = false
+    ) {
+        let state = SidebarPullRequestState(
+            number: number,
+            label: label,
+            url: url,
+            status: status,
+            branch: branch,
+            isStale: isStale
+        )
+        workspacePullRequest = state
+    }
+
+    /// Clears the workspace-level pull request while preserving panel metadata.
+    func clearWorkspacePullRequest() {
+        workspacePullRequest = nil
     }
     @Published var surfaceListeningPorts: [UUID: [Int]] = [:]
     var agentListeningPorts: [Int] = []
@@ -4024,6 +4085,7 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
         self.customTitle = nil
         self.customTitleSource = nil
         self.customDescription = nil
+        self.workspaceDirectory = nil
 
         let trimmedWorkingDirectory = workingDirectory?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let hasWorkingDirectory = !trimmedWorkingDirectory.isEmpty
@@ -4267,7 +4329,7 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
             bonsplitController.selectTab(initialTabId)
         }
         tmuxLayoutSnapshot = bonsplitController.layoutSnapshot()
-        scheduleExtensionSidebarProjectRootRefresh(for: currentDirectory)
+        scheduleExtensionSidebarProjectRootRefresh(for: workspaceDirectory ?? currentDirectory)
 
         // Forward shared agent-index refreshes so the bonsplit tab-bar re-evaluates
         // Fork Conversation availability when a background refresh lands.
@@ -5307,7 +5369,8 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
     }
 
     /// The working directory app-level actions (diff viewer, configured commands)
-    /// should target for this workspace: the focused panel's tracked directory, then
+    /// should target for this workspace: the assigned workspace directory, then
+    /// the focused panel's tracked directory, then
     /// its terminal's requested directory, then the workspace's current directory.
     /// Returns `nil` when none is known so callers can apply their own fallback.
     ///
@@ -5316,6 +5379,7 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
     /// self-contained.
     func resolvedWorkingDirectory() -> String? {
         let candidates = [
+            usesRemoteDirectoryProvenance ? nil : workspaceDirectory,
             focusedPanelId.flatMap { panelDirectories[$0] },
             focusedPanelId.flatMap { terminalPanel(for: $0)?.requestedWorkingDirectory },
             currentDirectory,
@@ -5327,6 +5391,29 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
             }
         }
         return nil
+    }
+
+    /// The directory used for workspace context surfaces and as the fallback
+    /// for newly created terminals. This does not change a terminal's cwd.
+    var presentedWorkspaceDirectory: String? {
+        guard !usesRemoteDirectoryProvenance else { return presentedCurrentDirectory }
+        let explicit = workspaceDirectory?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !explicit.isEmpty { return explicit }
+        return presentedCurrentDirectory
+    }
+
+    /// Stores or clears the explicit workspace context directory.
+    func setWorkspaceDirectory(_ directory: String?) {
+        let normalized = directory?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let nextDirectory = normalized?.isEmpty == false ? normalized : nil
+        guard workspaceDirectory != nextDirectory else { return }
+        workspaceDirectory = nextDirectory
+        scheduleExtensionSidebarProjectRootRefresh(for: presentedWorkspaceDirectory ?? "")
+        NotificationCenter.default.post(
+            name: .workspaceCurrentDirectoryDidChange,
+            object: self,
+            userInfo: ["workspaceId": id, "presentedDirectoryOnly": true]
+        )
     }
 
     func resolvedPanelTitle(panelId: UUID, fallback: String) -> String {
@@ -5778,7 +5865,7 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
 
     private func notifyPresentedCurrentDirectoryChanged(from previousDirectory: String?, force: Bool = false) {
         guard force || previousDirectory != presentedCurrentDirectory else { return }
-        scheduleExtensionSidebarProjectRootRefresh(for: currentDirectory)
+        scheduleExtensionSidebarProjectRootRefresh(for: workspaceDirectory ?? currentDirectory)
         NotificationCenter.default.post(
             name: .workspaceCurrentDirectoryDidChange,
             object: self,
@@ -6585,6 +6672,9 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
 
     func sidebarFinderDirectory() -> String? {
         guard !usesRemoteDirectoryProvenance else { return nil }
+        if let workspaceDirectory {
+            return workspaceDirectory
+        }
         let panelIds = sidebarOrderedPanelIds()
         let localPanelIds = panelIds.filter {
             !remoteDetectedSurfaceIds.contains($0)
@@ -6598,7 +6688,12 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
     }
 
     func sidebarPullRequestsInDisplayOrder(orderedPanelIds: [UUID]) -> [SidebarPullRequestState] {
+        if let workspacePullRequest { return [workspacePullRequest] }
         let validPanelPullRequests = panelPullRequests.filter { panelId, state in
+            if !usesRemoteDirectoryProvenance, let workspaceDirectory {
+                guard let directory = effectivePanelDirectory(panelId: panelId),
+                      NSString(string: directory).standardizingPath == NSString(string: workspaceDirectory).standardizingPath else { return false }
+            }
             guard !cloudDirectoryProvenanceRequired(panelId: panelId) else { return false }
             if usesRemoteDirectoryProvenance, effectivePanelDirectory(panelId: panelId) == nil {
                 return false
@@ -8322,6 +8417,7 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
         if let requested = TerminalWorkingDirectoryResolver.normalized(requestedWorkingDirectory) {
             return requested
         }
+        if !usesRemoteDirectoryProvenance, let workspaceDirectory { return workspaceDirectory }
         if let sourcePanelId,
            let rescued = resumedAgentPaneWorkingDirectoryRescue(panelId: sourcePanelId) {
             return rescued
@@ -9226,12 +9322,14 @@ final class Workspace: Identifiable, ObservableObject, FilePreviewTabMetadataHos
         }
         let fallbackSourcePanelId = workingDirectoryFallbackSourcePanelId
             ?? bonsplitController.selectedTab(inPane: paneId).map(\.id).flatMap(panelIdFromSurfaceId)
+        let contextWorkingDirectory = !usesRemoteDirectoryProvenance && startupRestoreAgent == nil
+            && restoredSurfaceId == nil ? workspaceDirectory : nil
         let requestedWorkingDirectory = inheritWorkingDirectoryFallback && startupCommand == nil
             ? resolvedTerminalStartupWorkingDirectory(
                 requestedWorkingDirectory: workingDirectory,
                 sourcePanelId: fallbackSourcePanelId
             )
-            : workingDirectory
+            : workingDirectory ?? contextWorkingDirectory
 
         // Create new terminal panel. A restored panel reuses its persisted
         // surface id (the panel/surface id IS the ghostty surface id, a
