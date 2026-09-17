@@ -746,7 +746,7 @@ struct CheckoutAttributionTests {
     func vmMemoryRequiresPlanErrorTextNamesMaxAndLinksTheMaxCheckout() {
         let text = defaultCloudVMAction(status: 402, errorCode: "vm_memory_requires_plan")
         #expect(text.contains("cmux Max"))
-        #expect(text.contains("https://cmux.com/pricing?plan=max"))
+        #expect(text.contains(ProUpgradePresenter.checkoutURL(source: .vmMemoryRequiresPlanError, plan: .max).absoluteString))
         #expect(text.contains("cmux_source=\(ProUpgradeSource.vmMemoryRequiresPlanError.rawValue)"))
         #expect(text.contains("cmux_client=mac"))
     }

@@ -48,6 +48,7 @@ enum ProUpgradeSource: String, CaseIterable, Sendable {
 /// `plan` query parameter on `/api/billing/checkout`; Pro is the server
 /// default, so it sends no parameter and older web deploys keep working.
 enum CheckoutPlan: String, Sendable {
+    case go
     case pro
     case max
 
@@ -311,6 +312,7 @@ private final class NativePricingWindowController: NSWindowController {
 
 private enum NativePricingPlanID: String, Decodable {
     case free
+    case go
     case pro
     case max
 }
@@ -348,6 +350,7 @@ private struct NativePricingSnapshot: Equatable {
     var email: String?
 
     var isMax: Bool { planId == .max }
+    var isGo: Bool { planId == .go }
 }
 
 @MainActor
@@ -517,6 +520,8 @@ private struct NativePricingPlansView: View {
         let plan: String
         if snapshot.isMax {
             plan = String(localized: "pricing.native.plan.max", defaultValue: "Max")
+        } else if snapshot.isGo {
+            plan = String(localized: "pricing.native.plan.go", defaultValue: "Go")
         } else if snapshot.isPro {
             plan = String(localized: "pricing.native.plan.pro", defaultValue: "Pro")
         } else {
@@ -564,14 +569,30 @@ private struct NativePricingPlansView: View {
                     String(localized: "pricing.native.free.feature.community", defaultValue: "Community support on Discord and GitHub"),
                 ]
             )
+            if snapshot.isGo || (CmuxFeatureFlags.shared.isGoPlanEnabled && !snapshot.isPro) {
+                NativePricingPlanCard(
+                    name: String(localized: "pricing.native.plan.go", defaultValue: "Go"),
+                    price: String(localized: "pricing.native.go.price", defaultValue: "$10"),
+                    period: String(localized: "pricing.native.period.month", defaultValue: "/month"),
+                    isCurrent: snapshot.isGo,
+                    actionTitle: snapshot.isGo ? String(localized: "pricing.native.currentPlan", defaultValue: "Current plan") : String(localized: "pricing.native.go.cta", defaultValue: "Get Go"),
+                    action: snapshot.isGo ? { ProUpgradePresenter.presentBillingPortal() } : { ProUpgradePresenter.presentCheckout(source: .nativePricingPreview, plan: .go) },
+                    isProminent: snapshot.isGo,
+                    features: [
+                        String(localized: "pricing.native.go.feature.vm", defaultValue: "1 active Cloud VM, 2 vCPU, 4 GiB RAM, 16 GiB disk"),
+                        String(localized: "pricing.native.go.feature.saved", defaultValue: "2 saved VMs"),
+                        String(localized: "pricing.native.go.feature.hours", defaultValue: "40 included VM-hours each month; pauses at the limit"),
+                    ]
+                )
+            }
             NativePricingPlanCard(
                 name: String(localized: "pricing.native.plan.pro", defaultValue: "Pro"),
                 price: String(localized: "pricing.native.pro.price", defaultValue: "$50"),
                 period: String(localized: "pricing.native.period.month", defaultValue: "/month"),
-                isCurrent: snapshot.isPro && !snapshot.isMax,
+                isCurrent: snapshot.isPro && !snapshot.isMax && !snapshot.isGo,
                 actionTitle: proActionTitle,
                 action: proAction,
-                isProminent: !snapshot.isMax,
+                isProminent: !snapshot.isMax && !snapshot.isGo,
                 features: [
                     String(localized: "pricing.native.pro.feature.vms", defaultValue: "Cloud agents on isolated Cloud VMs"),
                     String(localized: "pricing.native.pro.feature.hours", defaultValue: "Up to 50 Cloud VMs, with 24 GB RAM and 6 vCPUs shared across all VMs"),
@@ -588,7 +609,7 @@ private struct NativePricingPlansView: View {
                 action: snapshot.isMax ? nil : { ProUpgradePresenter.presentCheckout(source: .nativePricingPreview, plan: .max) },
                 isProminent: snapshot.isMax,
                 features: [
-                    String(localized: "pricing.native.max.feature.sizes", defaultValue: "Cloud VMs with 32 GB or 64 GB RAM"),
+                    String(localized: "pricing.native.max.feature.sizes", defaultValue: "Up to 64 GB RAM per machine"),
                     String(localized: "pricing.native.max.feature.pro", defaultValue: "Everything in Pro: 50 Cloud VMs, unlimited workspaces, the iOS app"),
                 ]
             )
@@ -633,7 +654,7 @@ private struct NativePricingPlansView: View {
         if snapshot.isMax {
             return String(localized: "pricing.native.manageBilling", defaultValue: "Manage billing")
         }
-        if snapshot.isPro {
+        if snapshot.isPro && !snapshot.isGo {
             return String(localized: "pricing.native.currentPlan", defaultValue: "Current plan")
         }
         if snapshot.authenticated {
@@ -648,7 +669,7 @@ private struct NativePricingPlansView: View {
         if snapshot.isMax {
             return { ProUpgradePresenter.presentBillingPortal() }
         }
-        if snapshot.isPro {
+        if snapshot.isPro && !snapshot.isGo {
             return nil
         }
         return { ProUpgradePresenter.presentCheckout(source: .nativePricingPreview) }

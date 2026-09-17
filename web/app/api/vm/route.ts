@@ -29,6 +29,7 @@ import {
   isPaidVmPlan,
   isVmBillingTeamResolutionError,
   maxMemoryMbForPlan,
+  upgradePlanForMemory,
   resolveVmEntitlements,
   type VmEntitlements,
   vmFreeAccessWindowDays,
@@ -54,6 +55,7 @@ import {
   withAuthedVmApiRoute,
   vmActiveLimitExceededResponse,
   vmMemoryRequiresPlanResponse,
+  vmMemoryUnavailableResponse,
   resolveVmProvisioningAccountScope,
   runAfterResponse,
   type VmWorkflowErrorOverrides,
@@ -72,6 +74,7 @@ import {
   VmTimingRecorder,
 } from "../../../services/vms/timings";
 import { authProviderErrorResponse } from "../../../services/vms/authErrors";
+import { getGoVmUsage, GO_SAVED_VM_LIMIT } from "../../../services/vms/goUsage";
 
 
 // Cold creates (provider VM boot, image pull, cmux-tui bootstrap) routinely
@@ -159,8 +162,16 @@ export async function GET(request: Request): Promise<Response> {
       const limits = listEntitlements
         ? {
           maxActiveVms: listEntitlements.maxActiveVms,
+          activeVmCount: entries.filter((vm) => vm.status === "running" || vm.status === "provisioning").length,
           planId: listEntitlements.planId,
           freeAccessWindowDays,
+          ...(listEntitlements.planId === "go" ? {
+            vmHoursIncluded: 40,
+            vmHoursUsed: await getGoVmUsage(user.id)
+              .then((usage) => usage ? Math.round(usage.usedSeconds / 360) / 10 : null)
+              .catch(() => null),
+            savedVmLimit: GO_SAVED_VM_LIMIT,
+          } : {}),
           // The earliest expiry across the caller's machines: what a fleet header
           // counts down to. Null when nothing is on a window.
           freeAccessExpiresAt: vms.reduce<number | null>(
@@ -175,6 +186,11 @@ export async function GET(request: Request): Promise<Response> {
           // instead of hiding that larger machines exist.
           lockedMemoryOptionsMb: lockedMemoryOptionsMbForPlan(listEntitlements.planId, process.env).memoryOptionsMb,
           memoryUpgradePlanId: lockedMemoryOptionsMbForPlan(listEntitlements.planId, process.env).upgradePlanId,
+          memoryUpgradePlansByMb: Object.fromEntries(lockedMemoryOptionsMbForPlan(listEntitlements.planId, process.env).memoryOptionsMb
+            .flatMap((mb) => {
+              const plan = upgradePlanForMemory(mb, listEntitlements.planId);
+              return plan ? [[String(mb), plan]] : [];
+            })),
           // Kinds a client may request (and the image each resolves to) for the
           // default provider, so a "new machine" dialog offers only kinds that work.
           imageKinds: listVmImageKinds(defaultProviderId(), process.env, {
@@ -219,7 +235,7 @@ export async function POST(request: Request): Promise<Response> {
       if (!scope.ok) return scope.response;
       const { user, entitlements } = scope;
 
-      const memory = resolveCreateMemory(span, entitlements.planId, candidate.memoryMb as number | undefined);
+      const memory = await resolveCreateMemory(span, entitlements.planId, candidate.memoryMb as number | undefined, request);
       if (!memory.ok) return memory.response;
       const memoryMb = memory.memoryMb;
 
@@ -607,34 +623,36 @@ async function resolveCreateAccount(input: {
  * the person chose it, and it is what Max sells. Coercing it to 8 GB would
  * silently hand them a smaller machine, so it is refused with the upgrade.
  */
-function resolveCreateMemory(
+async function resolveCreateMemory(
   span: Span,
   planId: string,
   requestedMemoryMb: number | undefined,
-): { readonly ok: true; readonly memoryMb: number } | { readonly ok: false; readonly response: Response } {
+  request: Request,
+): Promise<{ readonly ok: true; readonly memoryMb: number } | { readonly ok: false; readonly response: Response }> {
   const maxMemoryMb = maxMemoryMbForPlan(planId, process.env);
   const memoryOptionsMb = memoryOptionsMbForPlan(planId, process.env);
   const planMemoryMb = defaultMemoryMbForPlan(planId, process.env);
   const locked = lockedMemoryOptionsMbForPlan(planId, process.env);
   if (
     requestedMemoryMb !== undefined &&
-    locked.upgradePlanId &&
     locked.memoryOptionsMb.includes(requestedMemoryMb)
   ) {
+    const upgradePlanId = upgradePlanForMemory(requestedMemoryMb, planId);
+    if (!upgradePlanId) return { ok: false, response: await vmMemoryUnavailableResponse(maxMemoryMb, vmRequestLocale(request)) };
     setSpanAttributes(span, {
       "cmux.vm.memory_mb": requestedMemoryMb,
       "cmux.vm.max_memory_mb": maxMemoryMb,
       "cmux.vm.memory_requested_mb": requestedMemoryMb,
-      "cmux.vm.memory_requires_plan": locked.upgradePlanId,
+      "cmux.vm.memory_requires_plan": upgradePlanId,
     });
     return {
       ok: false,
-      response: vmMemoryRequiresPlanResponse({
+      response: await vmMemoryRequiresPlanResponse({
         memoryMb: requestedMemoryMb,
         maxMemoryMb,
         planId,
-        upgradePlanId: locked.upgradePlanId,
-      }),
+        upgradePlanId,
+      }, vmRequestLocale(request)),
     };
   }
   const memoryMb =
@@ -752,8 +770,9 @@ function createErrorResponders(entitlements: {
           failureMessage: error.message,
         },
       }),
-    VmLimitExceededError: (error) =>
+    VmLimitExceededError: (error, context) =>
       vmActiveLimitExceededResponse({
+        locale: context.locale,
         limit: error.limit,
         planId: entitlements.planId,
         retryAction: "Run `cmux vm ls`, then delete an active VM with `cmux vm rm <id>` before creating another, or upgrade your plan.",
