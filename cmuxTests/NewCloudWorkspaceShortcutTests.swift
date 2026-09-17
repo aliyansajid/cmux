@@ -2,6 +2,7 @@ import AppKit
 import CmuxSettings
 import Foundation
 import XCTest
+import CmuxCloudMachines
 
 #if canImport(cmux_DEV)
 @testable import cmux_DEV
@@ -17,10 +18,26 @@ final class NewCloudWorkspaceShortcutTests: XCTestCase {
     private final class RecordingSheetPresenter: NewMachineSheetPresenting {
         private(set) var presentCount = 0
         private(set) var lastWindow: NSWindow?
-        func presentNewMachineFetchingPlan(preferredWindow: NSWindow?) {
+        func presentNewMachineFetchingPlan(preferredWindow: NSWindow?) async -> UUID? {
             presentCount += 1
             lastWindow = preferredWindow
+            return nil
         }
+    }
+
+    private func installDependencies(on appDelegate: AppDelegate, presenter: RecordingSheetPresenter, signedIn: Bool = true) {
+        let defaults = UserDefaults(suiteName: "CloudShortcutTests.\(UUID().uuidString)")!
+        let store = DefaultCloudMachineStore(defaults: defaults)
+        appDelegate.cloudWorkspaceCoordinator = CloudWorkspaceCoordinator(
+            defaultMachineStore: store,
+            allowsOperation: { CloudMachinesFeature.isEnabled && signedIn },
+            loadMachines: { [CloudMachineDescriptor(id: "starred", isDesktop: true)] },
+            createWorkspace: { _, _ in UUID() }
+        )
+        appDelegate.newMachineSheetPresenter = presenter
+        appDelegate.cloudWorkspaceOperationController = CloudWorkspaceOperationController(
+            isAvailable: { CloudMachinesFeature.isEnabled && signedIn }
+        )
     }
 
     private var originalFileStore: KeyboardShortcutSettingsFileStore?
@@ -39,8 +56,6 @@ final class NewCloudWorkspaceShortcutTests: XCTestCase {
             originalCloudRemoteOverride = CmuxFeatureFlags.shared.overrideValue(for: definition)
             CmuxFeatureFlags.shared.setOverride(false, for: definition)
         }
-        AppDelegate.newCloudWorkspaceSheetPresenterOverride = nil
-        AppDelegate.newCloudWorkspaceAuthStateOverride = nil
     }
 
     override func tearDown() {
@@ -62,19 +77,20 @@ final class NewCloudWorkspaceShortcutTests: XCTestCase {
         if let definition = Self.cloudRemoteFlag {
             CmuxFeatureFlags.shared.setOverride(originalCloudRemoteOverride, for: definition)
         }
-        AppDelegate.newCloudWorkspaceSheetPresenterOverride = nil
-        AppDelegate.newCloudWorkspaceAuthStateOverride = nil
         AppDelegate.shared?.debugResetShortcutRoutingStateForTesting(clearFocusedWindowOverride: false)
         super.tearDown()
     }
 
     private static let cloudOptInKey = BetaFeaturesCatalogSection().cloudMachines.userDefaultsKey
     private static var cloudRemoteFlag: CmuxFeatureFlagDefinition? {
-        CmuxFeatureFlags.allFlags.first { $0.key == "cloud-vm-ui-enabled-release" }
+        CmuxFeatureFlags.allFlags.first { $0.key == "cloud-machines-enabled-release" }
     }
 
     private func setCloudMachinesEnabled(_ enabled: Bool) {
         UserDefaults.standard.set(enabled, forKey: Self.cloudOptInKey)
+        if let definition = Self.cloudRemoteFlag {
+            CmuxFeatureFlags.shared.setOverride(enabled, for: definition)
+        }
         XCTAssertEqual(CloudMachinesFeature.isEnabled, enabled)
     }
 
@@ -102,6 +118,12 @@ final class NewCloudWorkspaceShortcutTests: XCTestCase {
         }
     }
 
+    func testNewCloudMachineUsesCommandShiftY() {
+        let action = KeyboardShortcutSettings.Action.newCloudMachine
+        XCTAssertEqual(action.defaultShortcut, StoredShortcut(key: "y", command: true, shift: true, option: false, control: false))
+        XCTAssertEqual(action.label, "New Cloud Machine")
+    }
+
     func testSettingsPackageActionStaysAligned() throws {
         let settingsAction = try XCTUnwrap(
             ShortcutAction(rawValue: KeyboardShortcutSettings.Action.newCloudWorkspace.rawValue)
@@ -113,7 +135,7 @@ final class NewCloudWorkspaceShortcutTests: XCTestCase {
     }
 
     func testRebindPersistsThroughSettingsAPI() {
-        let rebound = StoredShortcut(key: "y", command: true, shift: false, option: true, control: false)
+        let rebound = StoredShortcut(key: "k", command: true, shift: true, option: false, control: false)
         KeyboardShortcutSettings.setShortcut(rebound, for: .newCloudWorkspace)
         XCTAssertEqual(KeyboardShortcutSettings.shortcut(for: .newCloudWorkspace), rebound)
         XCTAssertEqual(KeyboardShortcutSettings.menuShortcut(for: .newCloudWorkspace), rebound)
@@ -128,12 +150,13 @@ final class NewCloudWorkspaceShortcutTests: XCTestCase {
     func testBuiltInActionResolvesFromConfigAndMapsToShortcut() {
         XCTAssertEqual(CmuxSurfaceTabBarBuiltInAction(configID: "cmux.newCloudWorkspace"), .newCloudWorkspace)
         XCTAssertEqual(CmuxSurfaceTabBarBuiltInAction(configID: "newCloudWorkspace"), .newCloudWorkspace)
+        XCTAssertEqual(CmuxSurfaceTabBarBuiltInAction(configID: "cmux.newCloudMachine"), .newCloudMachine)
         XCTAssertEqual(CmuxSurfaceTabBarBuiltInAction.newCloudWorkspace.shortcutAction, .newCloudWorkspace)
+        XCTAssertEqual(CmuxSurfaceTabBarBuiltInAction.newCloudMachine.shortcutAction, .newCloudMachine)
         XCTAssertEqual(CmuxSurfaceTabBarBuiltInAction.newWorkspace.shortcutAction, .newTab)
         XCTAssertEqual(CmuxSurfaceTabBarBuiltInAction.newTerminal.shortcutAction, .newSurface)
         XCTAssertEqual(CmuxSurfaceTabBarBuiltInAction.newBrowser.shortcutAction, .openBrowser)
         XCTAssertNil(CmuxSurfaceTabBarBuiltInAction.cloudVM.shortcutAction)
-        XCTAssertTrue(CmuxSurfaceTabBarBuiltInAction.newCloudWorkspace.createsWorkspaceAsynchronously)
     }
 
     // MARK: Plus menu
@@ -167,9 +190,7 @@ final class NewCloudWorkspaceShortcutTests: XCTestCase {
         let (store, root) = try loadStore(globalJSON: "{}")
         defer { try? FileManager.default.removeItem(at: root) }
         XCTAssertFalse(store.newWorkspaceContextMenuIsConfigured)
-        // Never construct a bare AppDelegate here: its init reassigns
-        // AppDelegate.shared, and the routing tests below dispatch on shared.
-        let appDelegate = try XCTUnwrap(AppDelegate.shared)
+        let appDelegate = AppDelegate()
         let tabManager = TabManager()
         let windowId = appDelegate.registerMainWindowContextForTesting(
             tabManager: tabManager,
@@ -185,14 +206,16 @@ final class NewCloudWorkspaceShortcutTests: XCTestCase {
         setCloudMachinesEnabled(true)
         try withDefaultPlusMenu { menu in
             let rows = builtInMenuRows(menu)
-            let leading = rows.prefix(4).map(\.action)
-            XCTAssertEqual(leading, [.newWorkspace, .newCloudWorkspace, .newTerminal, .newBrowser])
+            let leading = rows.prefix(5).map(\.action)
+            XCTAssertEqual(leading, [.newWorkspace, .newCloudWorkspace, .newCloudMachine, .newTerminal, .newBrowser])
 
             let hints = Dictionary(uniqueKeysWithValues: rows.map { ($0.action, $0.item) })
             XCTAssertEqual(hints[.newWorkspace]?.keyEquivalent, "n")
             XCTAssertEqual(hints[.newWorkspace]?.keyEquivalentModifierMask, [.command])
             XCTAssertEqual(hints[.newCloudWorkspace]?.keyEquivalent, "y")
             XCTAssertEqual(hints[.newCloudWorkspace]?.keyEquivalentModifierMask, [.command])
+            XCTAssertEqual(hints[.newCloudMachine]?.keyEquivalent, "y")
+            XCTAssertEqual(hints[.newCloudMachine]?.keyEquivalentModifierMask, [.command, .shift])
             XCTAssertEqual(hints[.newTerminal]?.keyEquivalent, "t")
             XCTAssertEqual(hints[.newTerminal]?.keyEquivalentModifierMask, [.command])
             XCTAssertEqual(hints[.newBrowser]?.keyEquivalent, "l")
@@ -207,13 +230,13 @@ final class NewCloudWorkspaceShortcutTests: XCTestCase {
     func testPlusMenuHintFollowsRebindAndUnbind() throws {
         setCloudMachinesEnabled(true)
         KeyboardShortcutSettings.setShortcut(
-            StoredShortcut(key: "y", command: true, shift: false, option: true, control: false),
+            StoredShortcut(key: "k", command: true, shift: true, option: false, control: false),
             for: .newCloudWorkspace
         )
         try withDefaultPlusMenu { menu in
             let item = try XCTUnwrap(builtInMenuRows(menu).first { $0.action == .newCloudWorkspace }?.item)
-            XCTAssertEqual(item.keyEquivalent, "y")
-            XCTAssertEqual(item.keyEquivalentModifierMask, [.command, .option])
+            XCTAssertEqual(item.keyEquivalent, "k")
+            XCTAssertEqual(item.keyEquivalentModifierMask, [.command, .shift])
         }
 
         KeyboardShortcutSettings.setShortcut(.unbound, for: .newCloudWorkspace)
@@ -252,128 +275,61 @@ final class NewCloudWorkspaceShortcutTests: XCTestCase {
         """)
         defer { try? FileManager.default.removeItem(at: root) }
         XCTAssertTrue(store.configurationIssues.isEmpty)
-        // Never construct a bare AppDelegate here: its init reassigns
-        // AppDelegate.shared, and the routing tests below dispatch on shared.
-        let appDelegate = try XCTUnwrap(AppDelegate.shared)
+        let appDelegate = AppDelegate()
         let tabManager = TabManager()
         let windowId = appDelegate.registerMainWindowContextForTesting(tabManager: tabManager, cmuxConfigStore: store)
         defer { appDelegate.unregisterMainWindowContextForTesting(windowId: windowId) }
         let context = try XCTUnwrap(appDelegate.mainWindowContexts.values.first { $0.windowId == windowId })
         let menu = try XCTUnwrap(appDelegate.makeNewWorkspaceContextMenu(context: context, cmuxConfigStore: store))
         let rows = builtInMenuRows(menu)
-        // Missing standard rows lead in standard order; the configured rows
-        // follow in the order the config gave them.
-        XCTAssertEqual(rows.prefix(4).map(\.action), [.newWorkspace, .newBrowser, .newTerminal, .newCloudWorkspace])
-        XCTAssertEqual(rows[3].item.keyEquivalent, "y")
-        let separatorIndex = try XCTUnwrap(menu.items.firstIndex { $0.isSeparatorItem })
-        let terminalIndex = try XCTUnwrap(menu.items.firstIndex { $0 === rows[2].item })
-        XCTAssertLessThan(separatorIndex, terminalIndex)
-    }
-
-    func testConfiguredMenuWithoutWorkspaceRowsStillLeadsWithThem() throws {
-        setCloudMachinesEnabled(true)
-        let (store, root) = try loadStore(globalJSON: """
-        {
-          "actions": {
-            "start-codex": { "type": "command", "command": "codex", "title": "Start Codex" }
-          },
-          "ui": { "newWorkspace": { "contextMenu": [
-            { "action": "cmux.newTerminal", "title": "New Terminal" },
-            { "action": "cmux.newBrowser", "title": "New Browser" },
-            { "type": "separator" },
-            { "action": "start-codex", "title": "Start Codex" }
-          ] } }
-        }
-        """)
-        defer { try? FileManager.default.removeItem(at: root) }
-        XCTAssertTrue(store.configurationIssues.isEmpty)
-        let appDelegate = try XCTUnwrap(AppDelegate.shared)
-        let tabManager = TabManager()
-        let windowId = appDelegate.registerMainWindowContextForTesting(tabManager: tabManager, cmuxConfigStore: store)
-        defer { appDelegate.unregisterMainWindowContextForTesting(windowId: windowId) }
-        let context = try XCTUnwrap(appDelegate.mainWindowContexts.values.first { $0.windowId == windowId })
-        let menu = try XCTUnwrap(appDelegate.makeNewWorkspaceContextMenu(context: context, cmuxConfigStore: store))
-        let titles = menu.items.map { $0.isSeparatorItem ? "—" : $0.title }
-        XCTAssertEqual(Array(titles.prefix(6)), [
-            String(localized: "command.newWorkspace.title", defaultValue: "New Workspace"),
-            String(localized: "command.newCloudWorkspace.title", defaultValue: "New Cloud Workspace"),
-            "—",
-            "New Terminal",
-            "New Browser",
-            "—",
-        ])
-        XCTAssertTrue(titles.contains("Start Codex"))
-        XCTAssertEqual(builtInMenuRows(menu).filter { $0.action == .newTerminal }.count, 1)
-    }
-
-    func testStandardRowOptsOutWithNewWorkspaceMenuFalse() throws {
-        setCloudMachinesEnabled(true)
-        let (store, root) = try loadStore(globalJSON: """
-        {
-          "actions": { "cmux.newCloudWorkspace": { "newWorkspaceMenu": false } },
-          "ui": { "newWorkspace": { "contextMenu": ["cmux.newTerminal"] } }
-        }
-        """)
-        defer { try? FileManager.default.removeItem(at: root) }
-        XCTAssertTrue(store.configurationIssues.isEmpty, "\(store.configurationIssues)")
-        let appDelegate = try XCTUnwrap(AppDelegate.shared)
-        let tabManager = TabManager()
-        let windowId = appDelegate.registerMainWindowContextForTesting(tabManager: tabManager, cmuxConfigStore: store)
-        defer { appDelegate.unregisterMainWindowContextForTesting(windowId: windowId) }
-        let context = try XCTUnwrap(appDelegate.mainWindowContexts.values.first { $0.windowId == windowId })
-        let menu = try XCTUnwrap(appDelegate.makeNewWorkspaceContextMenu(context: context, cmuxConfigStore: store))
-        let actions = builtInMenuRows(menu).map(\.action)
-        XCTAssertFalse(actions.contains(.newCloudWorkspace))
-        XCTAssertEqual(actions.prefix(3).map { $0 }, [.newWorkspace, .newBrowser, .newTerminal])
+        XCTAssertEqual(rows.prefix(5).map(\.action), [.newWorkspace, .newCloudMachine, .newBrowser, .newTerminal, .newCloudWorkspace])
+        XCTAssertEqual(rows[4].item.keyEquivalent, "y")
     }
 
     // MARK: Shared action path
 
-    func testPlusMenuRowExecutesSharedAction() throws {
+    func testPlusMenuMachineRowExecutesSharedAction() async throws {
         setCloudMachinesEnabled(true)
         let presenter = RecordingSheetPresenter()
-        AppDelegate.newCloudWorkspaceSheetPresenterOverride = presenter
-        AppDelegate.newCloudWorkspaceAuthStateOverride = .signedIn
 
         let (store, root) = try loadStore(globalJSON: "{}")
         defer { try? FileManager.default.removeItem(at: root) }
-        // Never construct a bare AppDelegate here: its init reassigns
-        // AppDelegate.shared, and the routing tests below dispatch on shared.
-        let appDelegate = try XCTUnwrap(AppDelegate.shared)
+        let appDelegate = AppDelegate()
+        installDependencies(on: appDelegate, presenter: presenter)
         let tabManager = TabManager()
         let windowId = appDelegate.registerMainWindowContextForTesting(tabManager: tabManager, cmuxConfigStore: store)
         defer { appDelegate.unregisterMainWindowContextForTesting(windowId: windowId) }
         let context = try XCTUnwrap(appDelegate.mainWindowContexts.values.first { $0.windowId == windowId })
 
-        XCTAssertTrue(appDelegate.executeConfiguredCmuxAction(.builtIn(.newCloudWorkspace), context: context))
+        XCTAssertTrue(appDelegate.executeConfiguredCmuxAction(.builtIn(.newCloudMachine), context: context))
+        await appDelegate.cloudWorkspaceOperationController?.waitForPendingOperations()
         XCTAssertEqual(presenter.presentCount, 1)
     }
 
-    func testSharedActionBeepsInsteadOfPresentingWhenFeatureIsOff() throws {
+    func testSharedActionDoesNotPresentSheetWhenFeatureIsOff() {
         setCloudMachinesEnabled(false)
         let presenter = RecordingSheetPresenter()
-        AppDelegate.newCloudWorkspaceSheetPresenterOverride = presenter
-        AppDelegate.newCloudWorkspaceAuthStateOverride = .signedIn
-        XCTAssertFalse(try XCTUnwrap(AppDelegate.shared).performNewCloudWorkspaceAction(debugSource: "test.featureOff"))
+        let appDelegate = AppDelegate()
+        installDependencies(on: appDelegate, presenter: presenter)
+        XCTAssertFalse(appDelegate.performNewCloudWorkspaceAction(debugSource: "test.featureOff"))
         XCTAssertEqual(presenter.presentCount, 0)
     }
 
-    func testSharedActionDoesNotPresentSheetWhenSignedOut() throws {
+    func testSharedActionDoesNotPresentSheetWhenSignedOut() {
         setCloudMachinesEnabled(true)
         let presenter = RecordingSheetPresenter()
-        AppDelegate.newCloudWorkspaceSheetPresenterOverride = presenter
-        AppDelegate.newCloudWorkspaceAuthStateOverride = .signedOut
-        XCTAssertFalse(try XCTUnwrap(AppDelegate.shared).performNewCloudWorkspaceAction(debugSource: "test.signedOut"))
+        let appDelegate = AppDelegate()
+        installDependencies(on: appDelegate, presenter: presenter, signedIn: false)
+        XCTAssertFalse(appDelegate.performNewCloudWorkspaceAction(debugSource: "test.signedOut"))
         XCTAssertEqual(presenter.presentCount, 0)
     }
 
-    func testCommandYRoutesThroughSharedAction() throws {
+    func testCommandYRoutesThroughSharedAction() async throws {
 #if DEBUG
-        let appDelegate = try XCTUnwrap(AppDelegate.shared)
+        let appDelegate = AppDelegate()
         setCloudMachinesEnabled(true)
         let presenter = RecordingSheetPresenter()
-        AppDelegate.newCloudWorkspaceSheetPresenterOverride = presenter
-        AppDelegate.newCloudWorkspaceAuthStateOverride = .signedIn
+        installDependencies(on: appDelegate, presenter: presenter)
         KeyboardShortcutSettings.resetShortcut(for: .newCloudWorkspace)
         appDelegate.debugResetShortcutRoutingStateForTesting(clearFocusedWindowOverride: false)
 
@@ -390,26 +346,69 @@ final class NewCloudWorkspaceShortcutTests: XCTestCase {
             keyCode: 16 // kVK_ANSI_Y
         ))
         XCTAssertTrue(appDelegate.debugHandleCustomShortcut(event: event))
-        XCTAssertEqual(presenter.presentCount, 1)
+        await appDelegate.cloudWorkspaceOperationController?.waitForPendingOperations()
+        XCTAssertEqual(presenter.presentCount, 0)
 #else
         throw XCTSkip("Shortcut routing seam is DEBUG-only")
 #endif
     }
 
-    func testReboundKeyRoutesAndOldKeyDoesNot() throws {
+    func testCommandYCoalescesOneCreateAndOpenIntentUntilItFinishes() async throws {
 #if DEBUG
-        let appDelegate = try XCTUnwrap(AppDelegate.shared)
+        let appDelegate = AppDelegate()
         setCloudMachinesEnabled(true)
         let presenter = RecordingSheetPresenter()
-        AppDelegate.newCloudWorkspaceSheetPresenterOverride = presenter
-        AppDelegate.newCloudWorkspaceAuthStateOverride = .signedIn
-        // Option+Cmd+Y: no cmux default uses it, so the dispatcher reaches
-        // the newCloudWorkspace branch instead of an earlier action's match.
-        let rebound = StoredShortcut(key: "y", command: true, shift: false, option: true, control: false)
-        for action in KeyboardShortcutSettings.Action.allCases {
-            XCTAssertNotEqual(action.defaultShortcut, rebound, "\(action) defaults to the test rebind")
+        let defaults = UserDefaults(suiteName: "CloudShortcutCoalescingTests.\(UUID().uuidString)")!
+        let store = DefaultCloudMachineStore(defaults: defaults)
+        var createCount = 0
+        var releaseCreate: CheckedContinuation<Void, Never>?
+        appDelegate.cloudWorkspaceCoordinator = CloudWorkspaceCoordinator(
+            defaultMachineStore: store,
+            allowsOperation: { true },
+            loadMachines: { [CloudMachineDescriptor(id: "starred", isDesktop: true)] },
+            createWorkspace: { _, _ in
+                createCount += 1
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    releaseCreate = continuation
+                }
+                return UUID()
+            }
+        )
+        appDelegate.newMachineSheetPresenter = presenter
+        appDelegate.cloudWorkspaceOperationController = CloudWorkspaceOperationController(isAvailable: { true })
+
+        XCTAssertTrue(appDelegate.performNewCloudWorkspaceOnDefaultMachineAction(debugSource: "test.first"))
+        XCTAssertFalse(
+            appDelegate.performNewCloudWorkspaceOnDefaultMachineAction(debugSource: "test.duplicate"),
+            "a second Cmd+Y must not create another remote workspace while the first is attaching"
+        )
+        for _ in 0..<20 where releaseCreate == nil {
+            await Task.yield()
         }
-        KeyboardShortcutSettings.setShortcut(rebound, for: .newCloudWorkspace)
+        XCTAssertEqual(createCount, 1)
+        guard let releaseCreate else {
+            appDelegate.cloudWorkspaceOperationController?.cancelAll()
+            XCTFail("the first create operation did not reach its receipt gate")
+            return
+        }
+        releaseCreate.resume()
+        await appDelegate.cloudWorkspaceOperationController?.waitForPendingOperations()
+        XCTAssertEqual(presenter.presentCount, 0)
+#else
+        throw XCTSkip("Shortcut routing seam is DEBUG-only")
+#endif
+    }
+
+    func testReboundKeyRoutesAndOldKeyDoesNot() async throws {
+#if DEBUG
+        let appDelegate = AppDelegate()
+        setCloudMachinesEnabled(true)
+        let presenter = RecordingSheetPresenter()
+        installDependencies(on: appDelegate, presenter: presenter)
+        KeyboardShortcutSettings.setShortcut(
+            StoredShortcut(key: "k", command: true, shift: true, option: false, control: false),
+            for: .newCloudWorkspace
+        )
         appDelegate.debugResetShortcutRoutingStateForTesting(clearFocusedWindowOverride: false)
 
         func keyEvent(_ characters: String, _ modifiers: NSEvent.ModifierFlags, _ keyCode: UInt16) throws -> NSEvent {
@@ -427,11 +426,12 @@ final class NewCloudWorkspaceShortcutTests: XCTestCase {
             ))
         }
 
-        _ = appDelegate.debugHandleCustomShortcut(event: try keyEvent("y", [.command], 16))
+        XCTAssertFalse(appDelegate.debugHandleCustomShortcut(event: try keyEvent("y", [.command], 16)))
         XCTAssertEqual(presenter.presentCount, 0, "the old ⌘Y binding must not fire after a rebind")
 
-        XCTAssertTrue(appDelegate.debugHandleCustomShortcut(event: try keyEvent("y", [.command, .option], 16)))
-        XCTAssertEqual(presenter.presentCount, 1)
+        XCTAssertTrue(appDelegate.debugHandleCustomShortcut(event: try keyEvent("K", [.command, .shift], 40)))
+        await appDelegate.cloudWorkspaceOperationController?.waitForPendingOperations()
+        XCTAssertEqual(presenter.presentCount, 0)
 #else
         throw XCTSkip("Shortcut routing seam is DEBUG-only")
 #endif
@@ -440,7 +440,8 @@ final class NewCloudWorkspaceShortcutTests: XCTestCase {
     func testCommandPaletteNewMachineAdvertisesShortcut() {
         XCTAssertEqual(
             ContentView.commandPaletteShortcutAction(forCommandID: ContentView.commandPaletteCloudNewMachineCommandId),
-            .newCloudWorkspace
+            .newCloudMachine
         )
     }
+
 }

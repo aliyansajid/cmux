@@ -103,8 +103,9 @@ extension AppDelegate {
     /// Mirrors the command palette's gates for the same actions.
     static func isBuiltInActionAvailableInNewWorkspaceMenu(_ action: CmuxSurfaceTabBarBuiltInAction) -> Bool {
         switch action {
-        case .newCloudWorkspace, .cloudVM:
+        case .newCloudWorkspace, .newCloudMachine, .cloudVM:
             return CloudMachinesFeature.isEnabled
+                && AppDelegate.shared?.auth?.accountFlow.isAuthenticated == true
         case .newBrowser, .newAgentChat:
             return BrowserAvailabilitySettings.isEnabled()
         case .newSimulator:
@@ -122,7 +123,7 @@ extension AppDelegate {
     /// `newWorkspaceMenu: false` on the action id opts a row out; feature
     /// gates (Cloud Machines, browser) apply at open time.
     static let standardNewWorkspaceMenuActions: [CmuxSurfaceTabBarBuiltInAction] = [
-        .newWorkspace, .newCloudWorkspace, .newTerminal, .newBrowser,
+        .newWorkspace, .newCloudWorkspace, .newCloudMachine, .newTerminal, .newBrowser,
     ]
 
     func resolvedStandardNewWorkspaceMenuActions(
@@ -175,7 +176,11 @@ extension AppDelegate {
         cmuxConfigStore: CmuxConfigStore
     ) -> Bool {
         if action.newWorkspaceMenu == false { return false }
-        if configuredNewWorkspaceMenuActionIDs(cmuxConfigStore: cmuxConfigStore).contains(actionID) { return false }
+        let configuredActionIDs = Set(cmuxConfigStore.newWorkspaceContextMenuItems.compactMap { item -> String? in
+            guard case .action(let menuAction) = item else { return nil }
+            return menuAction.action.id
+        })
+        if configuredActionIDs.contains(actionID) { return false }
         return true
     }
 

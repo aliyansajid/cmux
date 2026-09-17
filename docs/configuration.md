@@ -75,7 +75,7 @@ Controls when cmux asks before quitting:
 - `dirty-only`: show it only when a workspace has a terminal or panel that reports close confirmation is needed.
 - `never`: quit immediately.
 
-Default: `always` for stable and nightly builds. DEV builds always behave as `never`, regardless of the file setting, so tagged development builds can be replaced without a full-screen quit dialog.
+Default: `always` for stable, nightly, and RC builds. DEV builds always behave as `never`, regardless of the file setting, so tagged development builds can be replaced without a full-screen quit dialog.
 
 The older boolean `app.warnBeforeQuit` still works as a fallback when `app.confirmQuit` is not set. `true` maps to `always`; `false` maps to `never`.
 
@@ -121,11 +121,9 @@ cmux uses a complete, de-duplicated descendant process tree. An incomplete
 listing is treated as unavailable and cannot authorize hibernation. Relative
 percentages (warning at 50% and critical at 70% of installed physical memory,
 with an optional 20%/10% available-memory corroboration) decide only when to
-show the warning and when to offer the idle-only pass. They are signals, not a
-memory ceiling or a limit on cmux.
+offer the idle-only pass. They are signals, not a memory ceiling or a limit on cmux.
 
-At warning or critical aggregate pressure, cmux posts a localized visible
-notification. While the same complete pressure remains through the existing
+While the same complete pressure remains through the existing
 confirmation window, cmux considers every currently eligible idle, non-visible
 agent through the ordinary lossless Agent Hibernation lifecycle. The scheduled
 routine pass retains its oldest-activity ordering; the pressure pass considers
@@ -171,9 +169,9 @@ Cmd+Ctrl+= and Cmd+Ctrl+- increase or decrease every terminal in the selected wo
 
 ## New Cloud Workspace shortcut and the plus-button menu
 
-Cmd+Y opens the New Machine sheet; Create provisions a cmux Cloud machine and attaches it as a new workspace. The same action backs File > New Cloud Workspace, the command palette's "New Cloud Machine…", the `cmux.newCloudWorkspace` action ID in `cmux.json`, and the plus-button menu row. Rebind or unbind it from Settings > Keyboard Shortcuts or with `shortcuts.bindings.newCloudWorkspace`. The row and the shortcut are available only when Cloud Machines is enabled (Settings > Beta Features or the remote rollout) and hidden otherwise.
+Cmd+Y creates a workspace on the starred default Cloud machine. Cmd+Shift+Y opens the New Machine flow to provision a new machine and attach its first workspace. Rebind or unbind these shortcuts from Settings > Keyboard Shortcuts or with `shortcuts.bindings.newCloudWorkspace` and `shortcuts.bindings.newCloudMachine`. Both are inert unless Cloud Machines is enabled and the account is signed in.
 
-The plus-button menu always leads with `cmux.newWorkspace` (Cmd+N), `cmux.newCloudWorkspace` (Cmd+Y), `cmux.newTerminal` (Cmd+T), and `cmux.newBrowser` (Cmd+Shift+L). A configured `ui.newWorkspace.contextMenu` keeps its own order; standard rows it lists stay where you put them, and the ones it omits are added above it. To drop a standard row, set `newWorkspaceMenu: false` on that action id, for example `"actions": { "cmux.newCloudWorkspace": { "newWorkspaceMenu": false } }`. Each row shows its current shortcut, so a rebind in Settings or `cmux.json` appears the next time the menu opens; unbound and chord shortcuts show no hint. Actions with a `shortcut` show it too.
+The plus-button menu carries `cmux.newWorkspace` (Cmd+N), `cmux.newCloudWorkspace` (Cmd+Y), `cmux.newCloudMachine` (Cmd+Shift+Y), `cmux.newTerminal` (Cmd+T), and `cmux.newBrowser` (Cmd+Shift+L). Each row shows its current shortcut, so a rebind in Settings or `cmux.json` appears the next time the menu opens; unbound and chord shortcuts show no hint. Cloud rows appear only when Cloud Machines is enabled. A configured menu keeps your order; standard rows it omits are prepended. Set `newWorkspaceMenu: false` on an action ID to omit its standard row. Built-in rows and actions with a `shortcut` show current shortcut hints.
 
 ## `terminal.textBoxSubmitActions`
 

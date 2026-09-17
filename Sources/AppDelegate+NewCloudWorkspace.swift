@@ -5,76 +5,58 @@ import Foundation
 // MARK: - New Cloud Workspace (Cmd+Y)
 
 extension AppDelegate {
-    /// The one path every "New Cloud Workspace" entrypoint goes through:
-    /// the `newCloudWorkspace` shortcut, File > New Cloud Workspace, the
-    /// plus-menu row, the `cmux.newCloudWorkspace` config action, and the
-    /// command palette's "New Cloud Machine…". Gates on the Cloud Machines
-    /// feature and on sign-in, then opens the New Machine sheet; Create
-    /// launches `cmux vm new …`, which provisions a machine and attaches it
-    /// as a new workspace.
-    ///
-    /// Returns false when the feature is off or the person is signed out
-    /// (the sign-in workspace opens instead), so callers can beep or skip
-    /// `onExecuted`.
+    /// Creates a workspace on the persisted default machine through the app-owned operation controller.
+    @discardableResult
+    func performNewCloudWorkspaceOnDefaultMachineAction(
+        preferredWindow: NSWindow? = nil,
+        debugSource: String = "newCloudWorkspace",
+        destination: CloudWorkspaceGroupDestination? = nil
+    ) -> Bool {
+        guard let coordinator = cloudWorkspaceCoordinator,
+              let operationController = cloudWorkspaceOperationController,
+              coordinator.isAvailable else { return false }
+        let context = preferredWindow.flatMap { contextForMainWindow($0) }
+            ?? preferredMainWindowContextForWorkspaceCreation(event: nil, debugSource: debugSource)
+        let focus = context?.tabManager.selectedTabId != nil
+        // Cmd+Y is one logical create-and-open intent. Coalesce repeated key
+        // events while the remote receipt is still being discovered/attached.
+        return operationController.start(key: "new-cloud-workspace.default") {
+            guard let workspaceID = try await coordinator.createOnDefaultMachine(focus: focus),
+                  !Task.isCancelled,
+                  coordinator.isAvailable else { return }
+            destination?.apply(workspaceID: workspaceID)
+        }
+    }
+
+    /// Presents machine provisioning and applies its exact workspace receipt to a group when requested.
     @discardableResult
     func performNewCloudWorkspaceAction(
         tabManager preferredTabManager: TabManager? = nil,
         event: NSEvent? = nil,
         preferredWindow: NSWindow? = nil,
-        debugSource: String = "newCloudWorkspace"
+        debugSource: String = "newCloudWorkspace",
+        destination: CloudWorkspaceGroupDestination? = nil
     ) -> Bool {
-        guard CloudMachinesFeature.isEnabled else {
-#if DEBUG
-            cmuxDebugLog("newCloudWorkspace.blocked_feature_disabled source=\(debugSource)")
-#endif
-            NSSound.beep()
-            return false
-        }
-        let authState = Self.newCloudWorkspaceAuthStateOverride ?? CloudVMPanelAuthState.resolve(
-            isAuthenticated: auth?.accountFlow.isAuthenticated == true,
-            isWorkingOnAuth: auth?.accountFlow.isWorkingOnAuth == true
-        )
-        guard authState.allowsAuthenticatedOperation else {
-#if DEBUG
-            cmuxDebugLog("newCloudWorkspace.blocked_signed_out source=\(debugSource)")
-#endif
-            _ = performAccountSignInWorkspaceAction(
-                preferredWindow: preferredWindow,
-                debugSource: "\(debugSource).auth"
-            )
-            return false
-        }
+        guard let operationController = cloudWorkspaceOperationController,
+              operationController.isCurrentlyAvailable else { return false }
         let context = preferredTabManager.flatMap { mainWindowContext(for: $0) }
             ?? preferredWindow.flatMap { contextForMainWindow($0) }
             ?? event.flatMap { mainWindowContext(forShortcutEvent: $0, debugSource: debugSource) }
             ?? preferredMainWindowContextForWorkspaceCreation(event: event, debugSource: debugSource)
         let hostWindow = context.flatMap { resolvedWindow(for: $0) }
-            ?? preferredWindow
-            ?? event?.window
-            ?? NSApp.keyWindow
-            ?? NSApp.mainWindow
-#if DEBUG
-        cmuxDebugLog("newCloudWorkspace.present_sheet source=\(debugSource)")
-#endif
-        newCloudWorkspaceSheetPresenter.presentNewMachineFetchingPlan(preferredWindow: hostWindow)
-        return true
+            ?? preferredWindow ?? event?.window ?? NSApp.keyWindow ?? NSApp.mainWindow
+        guard let presenter = newMachineSheetPresenter else { return false }
+        return operationController.start {
+            guard let workspaceID = await presenter.presentNewMachineFetchingPlan(preferredWindow: hostWindow),
+                  !Task.isCancelled,
+                  operationController.isCurrentlyAvailable else { return }
+            destination?.apply(workspaceID: workspaceID)
+        }
     }
-
-    /// Test seam: the sheet presenter the shared action hands off to.
-    var newCloudWorkspaceSheetPresenter: NewMachineSheetPresenting {
-        Self.newCloudWorkspaceSheetPresenterOverride ?? NewMachineSheetPresenter.shared
-    }
-
-    /// Tests install a recording presenter here; nil means the real sheet.
-    @MainActor
-    static var newCloudWorkspaceSheetPresenterOverride: NewMachineSheetPresenting?
-
-    /// Tests pin the sign-in state here; nil reads the live account flow.
-    @MainActor
-    static var newCloudWorkspaceAuthStateOverride: CloudVMPanelAuthState?
 }
 
 // MARK: - One create path for every flow
+
 
 extension AppDelegate {
     /// Runs the launcher that every placeholder-filling create uses; tests
@@ -105,15 +87,50 @@ extension AppDelegate {
         _ request: MachineCreateRequest,
         tabManager preferredTabManager: TabManager? = nil,
         preferredWindow: NSWindow?,
-        coordinator: MachineCreateCoordinator = .shared,
+        coordinator suppliedCoordinator: MachineCreateCoordinator? = nil,
         debugSource: String = "cloudVM.create"
     ) -> Bool {
+        let coordinator = suppliedCoordinator ?? .shared
+        guard let prepared = prepareCloudMachineCreate(request, tabManager: preferredTabManager, preferredWindow: preferredWindow, debugSource: debugSource) else { return false }
+        let (boundRequest, workspace, tabManager, launch) = prepared
+        let didStart = coordinator.start(boundRequest, cancellableLaunch: launch)
+        guard didStart else {
+            tabManager.closeWorkspace(workspace, recordHistory: false)
+            return false
+        }
+        installCloudMachineCreateRetry(workspace: workspace, coordinator: coordinator)
+        return true
+    }
+
+    /// Keeps the command controller's cancellation and exact workspace receipt
+    /// while using the same placeholder launcher as the panel and RPC paths.
+    func startCloudMachineCreateAndAwaitWorkspaceID(
+        _ request: MachineCreateRequest,
+        preferredWindow: NSWindow?,
+        coordinator: MachineCreateCoordinator
+    ) async -> UUID? {
+        guard let prepared = prepareCloudMachineCreate(request, preferredWindow: preferredWindow) else { return nil }
+        let (boundRequest, workspace, tabManager, launch) = prepared
+        installCloudMachineCreateRetry(workspace: workspace, coordinator: coordinator)
+        let result = await coordinator.startAndAwaitWorkspaceID(boundRequest, cancellableLaunch: launch)
+        if result == nil, !coordinator.operations.contains(where: { $0.request.placeholderWorkspaceID == workspace.id }), cloudVMLoadingPanel(in: workspace)?.hasFailed != true {
+            tabManager.closeWorkspace(workspace, recordHistory: false)
+        }
+        return result
+    }
+
+    private func prepareCloudMachineCreate(
+        _ request: MachineCreateRequest,
+        tabManager preferredTabManager: TabManager? = nil,
+        preferredWindow: NSWindow?,
+        debugSource: String = "cloudVM.create"
+    ) -> (MachineCreateRequest, Workspace, TabManager, MachineCreateCoordinator.CancellableLaunch)? {
         let context = preferredTabManager.flatMap { mainWindowContext(for: $0) }
             ?? preferredWindow.flatMap { contextForMainWindow($0) }
             ?? preferredMainWindowContextForWorkspaceCreation(event: nil, debugSource: debugSource)
         guard let context else {
             NSSound.beep()
-            return false
+            return nil
         }
         let tabManager = context.tabManager
         guard let workspace = makeCloudVMPlaceholderWorkspace(
@@ -121,7 +138,7 @@ extension AppDelegate {
             title: request.displayName,
             flow: request.loadingFlow,
             pinned: request.isBaseSetup
-        ) else { return false }
+        ) else { return nil }
         let boundRequest = request.withPlaceholder(workspaceID: workspace.id)
         let launchWindow = resolvedWindow(for: context) ?? preferredWindow
         let socketPath = TerminalController.shared.activeSocketPath(
@@ -139,8 +156,7 @@ extension AppDelegate {
                 onCompletion: completion
             )
         }
-        let workspaceID = workspace.id
-        let didStart = coordinator.start(boundRequest, cancellableLaunch: { [weak workspace] arguments, progress, completion in
+        let cancellableLaunch: MachineCreateCoordinator.CancellableLaunch = { [weak workspace] arguments, progress, completion in
             guard let workspace else { return nil }
             var cancellation: CloudVMActionLauncher.CancellationHandle?
             let didLaunch = launch(workspace, arguments, progress, { cancellation = $0 }, { [weak self] result in
@@ -161,12 +177,13 @@ extension AppDelegate {
                 completion(result)
             })
             return didLaunch ? cancellation : nil
-        })
-        guard didStart else {
-            tabManager.closeWorkspace(workspace, recordHistory: false)
-            return false
         }
-        if let panel = cloudVMLoadingPanel(in: workspace) {
+        return (boundRequest, workspace, tabManager, cancellableLaunch)
+    }
+
+    private func installCloudMachineCreateRetry(workspace: Workspace, coordinator: MachineCreateCoordinator) {
+        let workspaceID = workspace.id
+        if let panel = cloudVMLoadingPanel(in: workspace), panel.canRetry {
             panel.retryHandler = { [weak coordinator] in
                 guard let coordinator,
                       let operation = coordinator.operations.first(where: {
@@ -175,18 +192,5 @@ extension AppDelegate {
                 _ = coordinator.retry(operation.id)
             }
         }
-#if DEBUG
-        cmuxDebugLog("cloudVM.create.started source=\(debugSource) workspace=\(workspaceID.uuidString) args=\(boundRequest.arguments.joined(separator: " "))")
-#endif
-        return true
     }
 }
-
-/// The slice of `NewMachineSheetPresenter` the New Cloud Workspace action
-/// depends on, so tests can observe the handoff without a window.
-@MainActor
-protocol NewMachineSheetPresenting: AnyObject {
-    func presentNewMachineFetchingPlan(preferredWindow: NSWindow?)
-}
-
-extension NewMachineSheetPresenter: NewMachineSheetPresenting {}

@@ -22,6 +22,8 @@ struct MachineCreateRequest: Equatable {
     let name: String?
     /// The CLI arguments after `cmux`, e.g. `vm new --desktop --size 24576`.
     let arguments: [String]
+    /// Completion selects only in the initiating window.
+    let selectionWindowID: UUID?
     let source: Source
     /// The workspace created up front with a loading pane that the CLI fills
     /// in (`--workspace <id>`). Base derives it from `mode`; every other flow
@@ -34,13 +36,15 @@ struct MachineCreateRequest: Equatable {
         name: String?,
         arguments: [String],
         source: Source = .image,
-        placeholderWorkspaceID: UUID? = nil
+        placeholderWorkspaceID: UUID? = nil,
+        selectionWindowID: UUID? = nil
     ) {
         self.mode = mode
         self.kind = kind
         self.name = name
         self.arguments = arguments
         self.source = source
+        self.selectionWindowID = selectionWindowID
         self.explicitPlaceholderWorkspaceID = placeholderWorkspaceID
     }
 
@@ -78,7 +82,8 @@ struct MachineCreateRequest: Equatable {
             name: name,
             arguments: arguments,
             source: source,
-            placeholderWorkspaceID: workspaceID
+            placeholderWorkspaceID: workspaceID,
+            selectionWindowID: selectionWindowID
         )
     }
 
