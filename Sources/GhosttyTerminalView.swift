@@ -8948,26 +8948,33 @@ class GhosttyNSView: NSView, NSUserInterfaceValidations {
 
     // MARK: Cloud presence (pointer + Cmd+Shift-drag highlight)
 
-    /// Columns, rows, and cell size in points for anchor mapping. Nil until
-    /// the runtime has reported a cell size.
-    func cloudPresenceGrid() -> (columns: Int, rows: Int, cellSize: CGSize)? {
-        guard let surface, cellSize.width > 0, cellSize.height > 0 else { return nil }
-        let size = ghostty_surface_size(surface)
-        guard size.columns > 0, size.rows > 0 else { return nil }
-        return (Int(size.columns), Int(size.rows), cellSize)
+    /// The renderer's authoritative grid and padding in view points. The cell
+    /// size notification uses backing pixels and cannot map Retina view points.
+    func cloudPresenceGrid() -> CloudPresenceOverlayView.Geometry? {
+        guard let surface else { return nil }
+        var metrics = ghostty_surface_grid_metrics_s()
+        guard ghostty_surface_grid_metrics(surface, &metrics),
+              metrics.columns > 0, metrics.rows > 0,
+              metrics.cell_width.isFinite, metrics.cell_width > 0,
+              metrics.cell_height.isFinite, metrics.cell_height > 0,
+              metrics.padding_left.isFinite, metrics.padding_top.isFinite else { return nil }
+        return CloudPresenceOverlayView.Geometry(
+            cellSize: CGSize(width: metrics.cell_width, height: metrics.cell_height),
+            columns: Int(metrics.columns),
+            rows: Int(metrics.rows),
+            scrollOffset: scrollbar?.rowsBelowViewport ?? 0,
+            contentInset: CGPoint(x: metrics.padding_left, y: metrics.padding_top)
+        )
     }
 
-    /// The grid cell under a view point, as a daemon anchor. Mirrors the
-    /// centered-inset math the word-path resolver uses.
+    /// The grid cell under a view point, as a daemon anchor.
     func cloudPresenceCell(at point: NSPoint) -> CloudPresenceAnchor? {
         guard let grid = cloudPresenceGrid() else { return nil }
-        let xInset = max(0, (bounds.width - (CGFloat(grid.columns) * grid.cellSize.width)) / 2)
-        let yInset = max(0, (bounds.height - (CGFloat(grid.rows) * grid.cellSize.height)) / 2)
         let yFromTop = bounds.height - point.y
-        let row = Int((yFromTop - yInset) / grid.cellSize.height)
-        let col = Int((point.x - xInset) / grid.cellSize.width)
+        let row = Int(floor((yFromTop - grid.contentInset.y) / grid.cellSize.height))
+        let col = Int(floor((point.x - grid.contentInset.x) / grid.cellSize.width))
         guard row >= 0, row < grid.rows, col >= 0, col < grid.columns else { return nil }
-        return .cell(row: row, col: col, scrollOffset: scrollbar?.rowsBelowViewport ?? 0)
+        return .cell(row: row, col: col, scrollOffset: grid.scrollOffset)
     }
 
     private func cloudPresencePanelID() -> UUID? {
@@ -10689,17 +10696,7 @@ final class GhosttySurfaceScrollView: NSView {
 
     private func synchronizeCloudPresenceGeometry() {
         guard let grid = surfaceView.cloudPresenceGrid() else { return }
-        let size = cloudPresenceOverlayView.bounds.size
-        cloudPresenceOverlayView.geometry = CloudPresenceOverlayView.Geometry(
-            cellSize: grid.cellSize,
-            columns: grid.columns,
-            rows: grid.rows,
-            scrollOffset: surfaceView.scrollbar?.rowsBelowViewport ?? 0,
-            contentInset: CGPoint(
-                x: max(0, (size.width - CGFloat(grid.columns) * grid.cellSize.width) / 2),
-                y: max(0, (size.height - CGFloat(grid.rows) * grid.cellSize.height) / 2)
-            )
-        )
+        cloudPresenceOverlayView.geometry = grid
     }
 
     func synchronizeCloudTerminalReconnectOverlay() {

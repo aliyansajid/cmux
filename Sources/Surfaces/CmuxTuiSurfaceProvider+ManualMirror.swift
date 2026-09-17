@@ -105,11 +105,10 @@ extension CmuxTuiSurfaceProvider {
             CloudPresenceStore.shared.registerPane(
                 panelID: created.panelID,
                 machineID: machineID,
-                remoteSurfaceID: 0,
+                remoteSurfaceID: resolved.surfaceID,
                 socketPath: connected.socketPath
             )
             session.reconnect(socketPath: connected.socketPath)
-            scheduleRefresh()
             return CloudManualMirrorMaterialization(
                 workspaceID: created.workspaceID,
                 panelID: created.panelID,

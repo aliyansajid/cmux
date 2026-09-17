@@ -221,12 +221,7 @@ final class CloudPresenceOverlayView: NSView {
         let tip = CGPoint(x: cell.minX, y: cell.minY)
         context.saveGState()
         context.translateBy(x: tip.x, y: tip.y)
-        ComputerUseCursorArtwork.draw(
-            in: context,
-            scale: 1.5,
-            outlineColor: NSColor.white.cgColor,
-            outlineWidth: 1.7
-        )
+        ComputerUseCursorArtwork.drawPointer(in: context)
         context.restoreGState()
 
         // Keep the teammate name beside the same cursor hotspot.

@@ -556,7 +556,6 @@ final class CloudTuiManualMirrorSession {
             replayNeedsReset = false
             hasReceivedRemoteReplay = true
             diagnosticReplayReceived = true
-
             if phase == .attached { finishDiagnostics() }
             updatePresentationEpisode()
             synchronizePresentation()
@@ -575,7 +574,6 @@ final class CloudTuiManualMirrorSession {
             applyColors(colors)
             hasReceivedRemoteReplay = true
             diagnosticReplayReceived = true
-
             if phase == .attached { finishDiagnostics() }
             updatePresentationEpisode()
             synchronizePresentation()
