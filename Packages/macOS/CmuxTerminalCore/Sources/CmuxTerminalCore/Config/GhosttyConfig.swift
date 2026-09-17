@@ -8,11 +8,11 @@ public import Foundation
 /// `GhosttyConfig` is the value type that drives the embedded ghostty runtime's
 /// appearance. It parses ghostty's textual config format (``parse(_:loadingThemesImmediatelyFor:)``),
 /// resolves themes by light/dark color scheme, and can fold in cmux's managed
-/// default appearance only when the caller enables it and the user's config is
-/// untouched. Once the user adds any directive, its colors resolve from
-/// Ghostty's built-in defaults plus the user's settings. The wire format it
-/// reads (directive keys, theme resolution, NSColor hex codecs) is frozen and
-/// pinned by tests.
+/// default appearance when enabled and no theme or terminal colors are authored.
+/// Font, keybinding, and other non-color settings retain that adaptive base.
+/// Authored colors resolve from Ghostty's built-in defaults plus user settings.
+/// The wire format (directive keys, theme resolution, NSColor hex codecs) is
+/// frozen and pinned by tests.
 public struct GhosttyConfig {
     /// The light/dark terminal theme preference. An alias for
     /// ``TerminalColorSchemePreference``; the nested name keeps the
@@ -20,14 +20,12 @@ public struct GhosttyConfig {
     /// terminal view/engine code.
     public typealias ColorSchemePreference = TerminalColorSchemePreference
 
-    /// Catppuccin's light palette used for fresh installs before the user has
-    /// chosen terminal colors. This keeps the default terminal in sync with
-    /// Codex's default TUI theme.
-    public static let cmuxDefaultLightThemeName = "Catppuccin Latte"
-    /// Catppuccin's dark palette used for fresh installs before the user has
-    /// chosen terminal colors. This keeps the default terminal in sync with
-    /// Codex's default TUI theme.
-    public static let cmuxDefaultDarkThemeName = "Catppuccin Mocha"
+    /// Native fallback light theme name used for fresh installs before the user
+    /// has chosen terminal colors.
+    public static let cmuxDefaultLightThemeName = "Apple System Colors Light"
+    /// Native fallback dark theme name used for fresh installs before the user
+    /// has chosen terminal colors.
+    public static let cmuxDefaultDarkThemeName = "Apple System Colors"
 
     private static let loadCacheLock = NSLock()
     // Every read/write of this cache is serialized by `loadCacheLock`; the
@@ -61,12 +59,13 @@ public struct GhosttyConfig {
     public var command: String?
     /// The scrollback limit. Ghostty measures this in bytes, not lines.
     public var scrollbackLimit: Int = 50_000_000
-    /// The opacity (0...1) applied to unfocused split panes; the cmux default keeps terminal content at full contrast.
-    public var unfocusedSplitOpacity: Double = 1.0
-    private var hasUnfocusedSplitOpacityDirective = false
-    /// The unfocused-split overlay fill, or `nil` to use the background color.
+    /// The opacity (0...1) applied to unfocused split panes.
+    public var unfocusedSplitOpacity: Double = 0.7
+    /// The fill color for the unfocused-split overlay, or `nil` to use the
+    /// background color.
     public var unfocusedSplitFill: NSColor?
-    /// The split-divider color, or `nil` to derive one from the background.
+    /// The explicit split-divider color, or `nil` to derive one from the
+    /// background.
     public var splitDividerColor: NSColor?
 
     // Colors (from theme or config)
@@ -187,13 +186,15 @@ public struct GhosttyConfig {
     /// config file, theme, or optional cmux managed appearance is parsed.
     public init() {}
 
-    /// The overlay opacity (0...1) over unfocused splits, derived from ``unfocusedSplitOpacity``.
+    /// The opacity (0...1) of the overlay drawn over unfocused splits, derived
+    /// from ``unfocusedSplitOpacity``.
     public var unfocusedSplitOverlayOpacity: Double {
         let clamped = min(1.0, max(0.15, unfocusedSplitOpacity))
         return min(1.0, max(0.0, 1.0 - clamped))
     }
 
-    /// The overlay fill: ``unfocusedSplitFill`` when set, otherwise the background color.
+    /// The fill color of the unfocused-split overlay: the explicit
+    /// ``unfocusedSplitFill`` when set, otherwise the background color.
     public var unfocusedSplitOverlayFill: NSColor {
         unfocusedSplitFill ?? backgroundColor
     }
@@ -386,9 +387,9 @@ public struct GhosttyConfig {
     }
 
     /// Optionally applies cmux's managed default appearance when the resolved
-    /// user config contains no directives, then parses the user's config files.
-    /// Any configured Ghostty setting preserves Ghostty's own resolved color
-    /// base instead of receiving the managed appearance.
+    /// user config contains no theme or terminal colors, then parses its files.
+    /// Non-color settings preserve the adaptive base; authored colors preserve
+    /// Ghostty's own resolved base instead of receiving the managed appearance.
     mutating func loadResolvedUserConfig(
         configPaths: [String],
         preferredColorScheme: ColorSchemePreference,
@@ -488,59 +489,59 @@ public struct GhosttyConfig {
         return nil
     }
 
-    static func cmuxDefaultFallbackConfigContents(
+    private static func cmuxDefaultFallbackConfigContents(
         preferredColorScheme: ColorSchemePreference
     ) -> String {
         switch preferredColorScheme {
         case .light:
             return """
-            palette = 0=#5c5f77
-            palette = 1=#d20f39
-            palette = 2=#40a02b
-            palette = 3=#df8e1d
-            palette = 4=#1e66f5
-            palette = 5=#ea76cb
-            palette = 6=#179299
-            palette = 7=#acb0be
-            palette = 8=#6c6f85
-            palette = 9=#de293e
-            palette = 10=#49af3d
-            palette = 11=#eea02d
-            palette = 12=#456eff
-            palette = 13=#fe85d8
-            palette = 14=#2d9fa8
-            palette = 15=#bcc0cc
-            background = #eff1f5
-            foreground = #4c4f69
-            cursor-color = #dc8a78
-            cursor-text = #eff1f5
-            selection-background = #acb0be
-            selection-foreground = #4c4f69
+            palette = 0=#1a1a1a
+            palette = 1=#cc372e
+            palette = 2=#26a439
+            palette = 3=#cdac08
+            palette = 4=#0869cb
+            palette = 5=#9647bf
+            palette = 6=#479ec2
+            palette = 7=#98989d
+            palette = 8=#464646
+            palette = 9=#ff453a
+            palette = 10=#32d74b
+            palette = 11=#e5bc00
+            palette = 12=#0a84ff
+            palette = 13=#bf5af2
+            palette = 14=#69c9f2
+            palette = 15=#ffffff
+            background = #feffff
+            foreground = #000000
+            cursor-color = #98989d
+            cursor-text = #ffffff
+            selection-background = #abd8ff
+            selection-foreground = #000000
             """
         case .dark:
             return """
-            palette = 0=#45475a
-            palette = 1=#f38ba8
-            palette = 2=#a6e3a1
-            palette = 3=#f9e2af
-            palette = 4=#89b4fa
-            palette = 5=#f5c2e7
-            palette = 6=#94e2d5
-            palette = 7=#a6adc8
-            palette = 8=#585b70
-            palette = 9=#f37799
-            palette = 10=#89d88b
-            palette = 11=#ebd391
-            palette = 12=#74a8fc
-            palette = 13=#f2aede
-            palette = 14=#6bd7ca
-            palette = 15=#bac2de
-            background = #1e1e2e
-            foreground = #cdd6f4
-            cursor-color = #f5e0dc
-            cursor-text = #1e1e2e
-            selection-background = #585b70
-            selection-foreground = #cdd6f4
+            palette = 0=#1a1a1a
+            palette = 1=#cc372e
+            palette = 2=#26a439
+            palette = 3=#cdac08
+            palette = 4=#0869cb
+            palette = 5=#9647bf
+            palette = 6=#479ec2
+            palette = 7=#98989d
+            palette = 8=#464646
+            palette = 9=#ff453a
+            palette = 10=#32d74b
+            palette = 11=#ffd60a
+            palette = 12=#0a84ff
+            palette = 13=#bf5af2
+            palette = 14=#76d6ff
+            palette = 15=#ffffff
+            background = #1e1e1e
+            foreground = #ffffff
+            cursor-color = #98989d
+            cursor-text = #ffffff
+            selection-background = #3f638b
+            selection-foreground = #ffffff
             """
         }
     }
@@ -715,13 +716,10 @@ public struct GhosttyConfig {
                 case "unfocused-split-opacity":
                     if let opacity = Double(value) {
                         unfocusedSplitOpacity = opacity
-                        hasUnfocusedSplitOpacityDirective = true
                     }
                 case "unfocused-split-fill":
                     if let color = NSColor(hex: value) {
                         unfocusedSplitFill = color
-                        // A fill-only config opts into Ghostty's default dimming.
-                        if !hasUnfocusedSplitOpacityDirective { unfocusedSplitOpacity = 0.7 }
                     }
                 case "split-divider-color":
                     if let color = NSColor(hex: value) {
@@ -896,11 +894,11 @@ public struct GhosttyConfig {
         public init() {}
 
         /// Whether the config is eligible for cmux's managed default
-        /// appearance. Only an untouched config is eligible; any user directive
-        /// preserves Ghostty's own resolved base. The caller's adaptive-default
-        /// preference is evaluated separately.
+        /// appearance. Typography and behavior settings do not choose a palette.
+        /// Authored themes or terminal colors preserve Ghostty's resolved base;
+        /// the caller's adaptive-default preference is evaluated separately.
         public var shouldApplyDefaultAppearance: Bool {
-            !hasConfigDirective
+            !hasThemeDirective && !hasExplicitTerminalColorDirective
         }
 
         /// Records one config directive into the summary.
@@ -921,8 +919,8 @@ public struct GhosttyConfig {
     }
 
     /// Whether cmux should inject its managed default appearance: true only when
-    /// the caller enables it and the resolved user config contains no
-    /// directives.
+    /// the caller enables it and the resolved user config contains no authored
+    /// theme or terminal colors.
     public static func shouldApplyManagedDefaultAppearance(
         configPaths: [String],
         adaptiveDefaultThemeEnabled: Bool = false

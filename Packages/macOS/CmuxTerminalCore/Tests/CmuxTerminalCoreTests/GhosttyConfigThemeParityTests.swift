@@ -4,7 +4,7 @@ import Testing
 @testable import CmuxTerminalCore
 
 /// Verifies that cmux preserves configured Ghostty colors while retaining its
-/// adaptive managed palette for an untouched Ghostty configuration
+/// adaptive managed palette for configurations without authored terminal colors
 /// (https://github.com/manaflow-ai/cmux/issues/10199).
 @Suite struct GhosttyConfigThemeParityTests {
     enum Scenario: String, CaseIterable, Sendable {
@@ -41,17 +41,17 @@ import Testing
     ]
 
     private static let managedLightPalette = [
-        "#5C5F77", "#D20F39", "#40A02B", "#DF8E1D",
-        "#1E66F5", "#EA76CB", "#179299", "#ACB0BE",
-        "#6C6F85", "#DE293E", "#49AF3D", "#EEA02D",
-        "#456EFF", "#FE85D8", "#2D9FA8", "#BCC0CC",
+        "#1A1A1A", "#CC372E", "#26A439", "#CDAC08",
+        "#0869CB", "#9647BF", "#479EC2", "#98989D",
+        "#464646", "#FF453A", "#32D74B", "#E5BC00",
+        "#0A84FF", "#BF5AF2", "#69C9F2", "#FFFFFF",
     ]
 
     private static let managedDarkPalette = [
-        "#45475A", "#F38BA8", "#A6E3A1", "#F9E2AF",
-        "#89B4FA", "#F5C2E7", "#94E2D5", "#A6ADC8",
-        "#585B70", "#F37799", "#89D88B", "#EBD391",
-        "#74A8FC", "#F2AEDE", "#6BD7CA", "#BAC2DE",
+        "#1A1A1A", "#CC372E", "#26A439", "#CDAC08",
+        "#0869CB", "#9647BF", "#479EC2", "#98989D",
+        "#464646", "#FF453A", "#32D74B", "#FFD60A",
+        "#0A84FF", "#BF5AF2", "#76D6FF", "#FFFFFF",
     ]
 
     private static let fullExplicitPalette = [
@@ -108,43 +108,29 @@ import Testing
     }
 
     private func makeFixture(for scenario: Scenario, in directory: URL) throws -> ScenarioFixture {
-        let ghosttyDefaults = snapshot(
-            foreground: "#FFFFFF",
-            background: "#282C34",
-            palette: Self.ghosttyDefaultPalette
-        )
-
         switch scenario {
-        case .noConfig:
+        case .noConfig, .nonAppearanceSetting:
             return ScenarioFixture(
-                configContents: "# no Ghostty settings\n",
+                configContents: scenario == .noConfig ? "# no Ghostty settings\n" : "font-family = Menlo\n",
                 light: snapshot(
-                    foreground: "#4C4F69",
-                    background: "#EFF1F5",
-                    cursor: "#DC8A78",
-                    cursorText: "#EFF1F5",
-                    selectionBackground: "#ACB0BE",
-                    selectionForeground: "#4C4F69",
+                    foreground: "#000000",
+                    background: "#FEFFFF",
+                    cursor: "#98989D",
+                    cursorText: "#FFFFFF",
+                    selectionBackground: "#ABD8FF",
+                    selectionForeground: "#000000",
                     palette: Self.managedLightPalette
                 ),
                 dark: snapshot(
-                    foreground: "#CDD6F4",
-                    background: "#1E1E2E",
-                    cursor: "#F5E0DC",
-                    cursorText: "#1E1E2E",
-                    selectionBackground: "#585B70",
-                    selectionForeground: "#CDD6F4",
+                    foreground: "#FFFFFF",
+                    background: "#1E1E1E",
+                    cursor: "#98989D",
+                    cursorText: "#FFFFFF",
+                    selectionBackground: "#3F638B",
+                    selectionForeground: "#FFFFFF",
                     palette: Self.managedDarkPalette
                 ),
                 changesWithAppearance: true
-            )
-
-        case .nonAppearanceSetting:
-            return ScenarioFixture(
-                configContents: "font-family = Menlo\n",
-                light: ghosttyDefaults,
-                dark: ghosttyDefaults,
-                changesWithAppearance: false
             )
 
         case .partialExplicitColors:
