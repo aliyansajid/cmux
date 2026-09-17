@@ -47,13 +47,24 @@ struct CloudTreeCreateAffordanceTests {
         SurfaceRemoteWorkspace(id: id, name: name, index: index, focused: index == 0)
     }
 
+    /// Current Cloud trees show workspaces only when they contain an actual surface.
+    private func terminal(in workspace: SurfaceRemoteWorkspace, on machine: SurfaceMachineID? = nil) -> SurfaceResource {
+        var resource = SurfaceResource(
+            id: SurfaceResourceID(machine: machine ?? self.machine, kind: .terminal, key: "term_" + workspace.id),
+            title: "bash", detail: nil, lifecycle: .running, agent: nil,
+            remoteWorkspace: workspace, port: nil, url: nil
+        )
+        resource.remoteViews = [SurfaceRemoteView(tabID: "tab_" + workspace.id, workspace: workspace)]
+        return resource
+    }
+
     private func rows(
         workspaces: [SurfaceRemoteWorkspace],
         selectedRemoteWorkspaceID: String? = nil
     ) -> [CloudTreeNode] {
         let snapshot = SurfaceCatalogSnapshot(
             machines: [info(workspaces: workspaces)],
-            resources: [],
+            resources: workspaces.map { terminal(in: $0) },
             projections: []
         )
         return CloudTreeNodeBuilder.flattened(CloudTreeNodeBuilder.nodes(
@@ -123,7 +134,7 @@ struct CloudTreeCreateAffordanceTests {
         let coordinator = CloudTreeOutlineView.Coordinator(
             machineActions: MachineRowActions(
                 openShell: { _ in }, openDesktop: { _ in }, runCommand: { _, _ in },
-                confirmDelete: { _ in }, promptRename: { _, _ in }, promptUpgrade: {}
+                confirmDelete: { _ in }, promptRename: { _, _ in }, resizeDisk: { _, _ in }, promptUpgrade: {}
             ),
             nodeActions: actions,
             expansionStore: CloudTreeExpansionStore(
@@ -210,7 +221,7 @@ struct CloudTreeCreateAffordanceTests {
         let otherMachine = SurfaceMachineID.cloud("another-machine")
         let snapshot = SurfaceCatalogSnapshot(
             machines: [info(workspaces: [main]), info(workspaces: [main], machineID: otherMachine)],
-            resources: [], projections: []
+            resources: [terminal(in: main), terminal(in: main, on: otherMachine)], projections: []
         )
         let nodes = CloudTreeNodeBuilder.flattened(CloudTreeNodeBuilder.nodes(
             machines: [fleetRow()], snapshot: snapshot, localWorkspaces: [],
@@ -358,7 +369,7 @@ struct CloudTreeCreateAffordanceTests {
         CloudTreeOutlineView.Coordinator(
             machineActions: MachineRowActions(
                 openShell: { _ in }, openDesktop: { _ in }, runCommand: { _, _ in },
-                confirmDelete: { _ in }, promptRename: { _, _ in }, promptUpgrade: {}
+                confirmDelete: { _ in }, promptRename: { _, _ in }, resizeDisk: { _, _ in }, promptUpgrade: {}
             ),
             nodeActions: CloudTreeNodeActions(
                 project: { _, _, _ in }, projectRemoteView: { _, _, _, _ in },

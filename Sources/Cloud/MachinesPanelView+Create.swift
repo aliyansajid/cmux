@@ -31,8 +31,8 @@ extension MachinesPanelView {
         CloudTreeNodeActions.bound(
             catalog: { SurfaceCatalog.shared },
             selectedWorkspaceID: { [weak tabManager] in tabManager?.selectedTabId },
-            selectLocalWorkspace: { workspaceID in
-                tabManager.selectedTabId = workspaceID
+            selectLocalWorkspace: { [weak tabManager] workspaceID in
+                tabManager?.selectedTabId = workspaceID
             },
             onWillMutate: { [weak viewModel] label in viewModel?.beginOperation(label) },
             onDidMutate: { [weak viewModel] in viewModel?.endOperation() },
@@ -43,7 +43,8 @@ extension MachinesPanelView {
                 guard viewModel.machines.first(where: { .cloud($0.id) == machine })?.freeAccess == .expired else { return true }
                 ProUpgradePresenter.present(source: .machinesPanelMachineAction)
                 return false
-            }
+            },
+            refreshMachine: { [weak viewModel] in viewModel?.refreshMachine($0) }
         )
     }
 
