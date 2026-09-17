@@ -10,7 +10,6 @@ xcuserdata/
 .DS_Store
 
 # Local env
-.env
 .envrc
 !web/.envrc
 ios/Config/AppStoreConnect.local.plist
@@ -78,3 +77,4 @@ tmux-*.log
 # Remote-only Blacksmith cmux-tui benchmark output
 /testbox-benchmark/
 /.cmux-scratch/
+config.bat
