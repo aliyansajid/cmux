@@ -182,6 +182,8 @@ MODEL_BY_PATH = {
     'commands/notify/request': models.NotifyRequest,
     'commands/pairing-response/request': models.PairingResponseRequest,
     'commands/pane-neighbor/request': models.PaneNeighborRequest,
+    'commands/paste-image/request': models.PasteImageRequest,
+    'commands/paste-image/result': models.PasteImageResult,
     'commands/ping/request': models.PingRequest,
     'commands/presence-clear/request': models.PresenceClearRequest,
     'commands/presence-list/request': models.PresenceListRequest,

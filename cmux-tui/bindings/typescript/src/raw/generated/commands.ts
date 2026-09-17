@@ -1,5 +1,5 @@
 /* This file is generated. Do not edit by hand. */
-/* cmux-tui mux protocol 12, IR 3c5e184715e57b897be324f885bf9da77cd01931353c8205f327a87d58b88313. */
+/* cmux-tui mux protocol 12, IR d9db9b34a8e4f367ce1aae230fcd188796903d6adf169f9675872a48d9fd1f25. */
 
 
 import type * as T from "./types.js";
@@ -549,30 +549,27 @@ export interface PaneNeighborRequest extends CmuxRequestBase {
   "pane": T.Id;
 }
 
+/** Protocol v12; authority: control. */
+export interface PasteImageRequest extends CmuxRequestBase {
+  cmd: "paste-image";
+  "data"?: (string) | null;
+  "lease": string;
+  "mime"?: (string) | null;
+  "offset"?: (bigint) | null;
+  "op": string;
+  "size"?: (bigint) | null;
+  "surface": T.Id;
+  "terminal_id": string;
+  "upload_id": string;
+}
+export type PasteImageResult = {
+  "accepted": boolean;
+};
+
 /** Protocol v6; authority: control. */
 export interface PingRequest extends CmuxRequestBase {
   cmd: "ping";
 }
-
-/** Protocol v12; authority: control. */
-export interface PresenceClearRequest extends CmuxRequestBase {
-  cmd: "presence-clear";
-}
-export type PresenceClearResult = T.EmptyResult;
-
-/** Protocol v12; authority: control. */
-export interface PresenceListRequest extends CmuxRequestBase {
-  cmd: "presence-list";
-}
-
-/** Protocol v12; authority: control. */
-export interface PresenceUpdateRequest extends CmuxRequestBase {
-  cmd: "presence-update";
-  "highlight"?: (T.PresenceHighlight) | null;
-  "pointer"?: (T.PresenceAnchor) | null;
-  "surface": T.Id;
-}
-export type PresenceUpdateResult = T.EmptyResult;
 
 /** Protocol v6; authority: control. */
 export interface ProcessInfoRequest extends CmuxRequestBase {
@@ -910,7 +907,6 @@ export type SplitResult = T.SurfaceResult;
 /** Protocol v5; authority: frontend. */
 export interface SubscribeRequest extends CmuxRequestBase {
   cmd: "subscribe";
-  "presence_only"?: (boolean) | null;
   "surface"?: (T.Id) | null;
   "tree_events"?: ("coarse" | "deltas") | null;
 }
@@ -1030,10 +1026,8 @@ export type CmuxRequest =
   | NotifyRequest
   | PairingResponseRequest
   | PaneNeighborRequest
+  | PasteImageRequest
   | PingRequest
-  | PresenceClearRequest
-  | PresenceListRequest
-  | PresenceUpdateRequest
   | ProcessInfoRequest
   | PutFrontendProjectionRequest
   | ReadScreenRequest
@@ -1562,36 +1556,20 @@ export interface CmuxCommandDefinitionMap {
     capability: null;
     stream: null;
   };
+  "paste-image": {
+    request: PasteImageRequest;
+    result: PasteImageResult;
+    authority: "control";
+    since: 12;
+    capability: "terminal-image-paste-v1";
+    stream: null;
+  };
   "ping": {
     request: PingRequest;
     result: T.PingResult;
     authority: "control";
     since: 6;
     capability: null;
-    stream: null;
-  };
-  "presence-clear": {
-    request: PresenceClearRequest;
-    result: PresenceClearResult;
-    authority: "control";
-    since: 12;
-    capability: "presence-v1";
-    stream: null;
-  };
-  "presence-list": {
-    request: PresenceListRequest;
-    result: T.PresenceListResult;
-    authority: "control";
-    since: 12;
-    capability: "presence-v1";
-    stream: null;
-  };
-  "presence-update": {
-    request: PresenceUpdateRequest;
-    result: PresenceUpdateResult;
-    authority: "control";
-    since: 12;
-    capability: "presence-v1";
     stream: null;
   };
   "process-info": {

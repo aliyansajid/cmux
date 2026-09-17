@@ -10,6 +10,13 @@ struct CloudManualMirrorFixtureCommand: Sendable {
     let capabilities: [String]
     let hasInitialSize: Bool
     let pointerRow: Int?
+    let imageOperation: String?
+    let terminalID: String?
+    let lease: String?
+    let uploadID: String?
+    let offset: Int?
+    let imageBytes: Data?
+    let hasDestinationPath: Bool
 
     init?(_ object: [String: Any]) {
         guard let cmd = object["cmd"] as? String else { return nil }
@@ -19,6 +26,13 @@ struct CloudManualMirrorFixtureCommand: Sendable {
         capabilities = object["capabilities"] as? [String] ?? []
         hasInitialSize = object["cols"] != nil || object["rows"] != nil
         pointerRow = (object["pointer"] as? [String: Any])?["row"] as? Int
+        imageOperation = object["op"] as? String
+        terminalID = object["terminal_id"] as? String
+        lease = object["lease"] as? String
+        uploadID = object["upload_id"] as? String
+        offset = object["offset"] as? Int
+        imageBytes = (object["data"] as? String).flatMap { Data(base64Encoded: $0) }
+        hasDestinationPath = object["path"] != nil
     }
 }
 

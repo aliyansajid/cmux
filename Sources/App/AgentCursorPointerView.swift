@@ -2,7 +2,9 @@ import AppKit
 
 /// The exact Sky cursor geometry and cmux brand fill shared by the live pointer
 /// and the standalone Computer Use helper icon.
-private enum ComputerUseCursorArtwork {
+/// Shared Computer Use cursor artwork. Presence overlays use the same shape so
+/// an agent pointer has one visual language across cmux surfaces.
+enum ComputerUseCursorArtwork {
     static func path() -> CGPath {
         let kite = CGMutablePath()
         kite.move(to: CGPoint(x: 0.68, y: 1.83))

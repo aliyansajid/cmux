@@ -101,6 +101,7 @@ public:
     [[nodiscard]] Result<NotifyResult> notify(const NotifyRequest& request, RequestOptions options = {});
     [[nodiscard]] Result<EmptyResult> pairing_response(const PairingResponseRequest& request, RequestOptions options = {});
     [[nodiscard]] Result<PaneNeighborResult> pane_neighbor(const PaneNeighborRequest& request, RequestOptions options = {});
+    [[nodiscard]] Result<PasteImageResult> paste_image(const PasteImageRequest& request, RequestOptions options = {});
     [[nodiscard]] Result<PingResult> ping(const PingRequest& request = {}, RequestOptions options = {});
     [[nodiscard]] Result<EmptyResult> presence_clear(const PresenceClearRequest& request = {}, RequestOptions options = {});
     [[nodiscard]] Result<PresenceListResult> presence_list(const PresenceListRequest& request = {}, RequestOptions options = {});
