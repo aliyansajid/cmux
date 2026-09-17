@@ -103,11 +103,11 @@ extension Workspace {
         guard cloudPendingCreations[reservation.panelID] === reservation else { return }
         reservation.resolution.complete(.failure(error))
         setCloudManualMirrorTabLoading(panelID: reservation.panelID, false)
-        let failure = CloudPaneCreationFailure(machine: reservation.machine, error: error)
+        let failure = CloudPaneCreationFailure(machine: reservation.machine, error: error, context: CloudOperationContext.current)
         setCloudMaterializationFailure(
             surfaceID: reservation.panelID,
-            detail: "\(failure.errorText) \(failure.recoveryText)",
-            reference: nil
+            detail: failure.errorText,
+            reference: failure.copyableText
         )
     }
 
