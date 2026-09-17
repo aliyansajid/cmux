@@ -202,6 +202,9 @@ final class MachinesPanelViewModel: ObservableObject {
     /// these on every local recompute without another round trip.
     private var lastLimits: VMPlanLimits?
     var memoryOptionsMb: [Int] { lastLimits?.memoryOptionsMb ?? [] }
+    var lockedMemoryOptionsMb: [Int]? { lastLimits?.lockedMemoryOptionsMb }
+    var memoryUpgradePlanId: String? { lastLimits?.memoryUpgradePlanId }
+    var memoryUpgradePlansByMb: [String: String]? { lastLimits?.memoryUpgradePlansByMb }
     private var authSignOutObserver: NSObjectProtocol?
     private var networkObserver: NSObjectProtocol?
     private var featureFlagObserver: CloudFeatureAvailabilityObserver?
