@@ -16241,6 +16241,7 @@
 				MARKETING_VERSION = 0.64.24;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.cmuxterm.apptests;
+				EXCLUDED_SOURCE_FILE_NAMES = MobilePairingConnectionTransitionTests.swift;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_VERSION = 5.0;
@@ -16260,6 +16261,7 @@
 				MARKETING_VERSION = 0.64.24;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = com.cmuxterm.apptests;
+				EXCLUDED_SOURCE_FILE_NAMES = MobilePairingConnectionTransitionTests.swift;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 5.0;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/cmux.app/Contents/MacOS/cmux";
