@@ -88,7 +88,6 @@ pub use presence::{
 pub use resource_api::{ResourceMachineRequest, ResourceMachineService};
 pub use resource_selector::{ResolvedResourcePath, ResourceSelectors, ResourceTarget};
 pub use short_id::assign_short_ids;
-pub use surface::{apply_terminal_color_overrides, default_child_term};
 pub use surface::{
     AttachFrame, AttachFrameReceiver, AttachStream, BrowserAttachState, BrowserFrame,
     BrowserFrameStream, BrowserFrameUpdate, BrowserSource, BrowserStatus,
@@ -99,6 +98,7 @@ pub use surface::{
     SurfaceKind, SurfaceOptions, SurfaceRenderFrame, TerminalColors, TerminalHostConnectionState,
     TerminalPointerSnapshot,
 };
+pub use surface::{apply_terminal_color_overrides, default_child_term};
 pub use workspace_registry::{
     FrontendProjection, JournalAppendCommit, JournalAuthority, JournalCheckpoint, JournalClass,
     JournalContentRef, JournalEventSchema, JournalHookDeliveryPolicy, JournalHookExec,
