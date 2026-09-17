@@ -522,7 +522,7 @@ Socket methods (the CLI, the sidebar tree, and agents all go through them):
 | `vm.terminal_open` | `{id, terminal_id, remote_workspace_id?, remote_tab_id?, workspace_id?, placement?, focus?}` | `{surface_id, workspace_id, reused}` — exact remote placement is preserved; an existing pane with the same IDs is focused instead of duplicated |
 | `vm.terminal_new` | `{id, workspace_id?: ws_…, command?: [string], cwd?, name?, open?}` | `{terminal_id, workspace_id, surface_id?}` — a detached terminal in the machine's session |
 | `vm.desktop_open` | `{id, workspace_id?, focus?}` | `{surface_id, url}` |
-| `vm.port_open` | `{id, port, workspace_id?}` | `{surface_id, remote_port, url, open_url, local_url, local_port, private_url}`: `remote_port` is the VM service port requested by the caller. `url`/`open_url` remain the compatibility link the pane loads; when the machine has a private address this is an app-owned loopback forward. `local_url` and `local_port` identify that local listener (for example `127.0.0.1:64321`) and may differ from `remote_port` (for example VM port `8000`). When no private address exists, the control-plane preview is returned and the local fields are `null`. `private_url` is the machine's `http://<private ip>:<port>` address. |
+| `vm.port_open` | `{id, port, workspace_id?}` | `{surface_id, remote_port, url, open_url, local_url, local_port, private_url}`: `remote_port` identifies the VM service. `url`, `open_url`, and `private_url` identify its private address. `local_url` and `local_port` describe an existing loopback listener and are `null` until one exists. The local ephemeral port may differ from the VM port. Inspecting metadata never creates a forward or requests a public preview. |
 | `vm.link_socket` | `{id}` | `{socket_path, session}` — the headless link's local mux socket |
 | `vm.tab_rename` | `{id, tab_id, name}` | Renames one exact remote tab placement and publishes the resulting daemon event. `name: ""` clears its custom label. |
 | `vm.terminal_rename` | `{id, terminal_id, name}` | Explicit compatibility fan-out that renames every tab view of one terminal. `name: ""` clears the custom label on every view. |
@@ -698,11 +698,31 @@ nothing else), and `/integrations` (what the machine can use, each with a `help`
 command). The shim resolves `cmux vm exec <peer>` through `/peers` when no route file
 exists. See docs/vm-identity-edge-auth.md.
 
+## Coding-agent hooks on a machine
+
+Every machine ships the cmux-tui hooks for Claude Code and Codex, installed
+for the daemon user (`/home/cmux`): the bake and the create-time install both
+run `cmux-tui agent hook install claude codex` right after the binary
+(`cmuxTuiInstallCommand`), with the `cmux-tui-hook` helper downloaded from the
+same manifest commit as the daemon and placed beside it. A machine whose daemon
+is healthy but predates this gets the hooks on attach (`ensureAgentHooks` in
+`freestyle.ts`), using the helper of the commit in `/etc/cmux/cmux-tui-pin`;
+the daemon keeps running because it already exports `CMUX_TUI_HOOK` into
+every pane. The readiness probe (`cmuxTuiHooksReadyCommand`) requires the
+installed helper to be byte-equal to the pinned one and the cmux marker in
+`~/.claude/settings.json`, `~/.codex/hooks.json`, and the `[hooks]` trust
+table in `~/.codex/config.toml`. `agent-config.sh` adds the codex model
+provider around that trust table at the first login that sees a boot env, so
+the two writers of `config.toml` compose in either order. The bake's
+`agent-hooks` step proves all of it on the snapshot.
+
 ## Notifications from a machine
 
 `cmux notify` inside a machine is the guest shim (`web/services/vms/guestCli.ts`)
-translating to `notification create --title … --body … [--level …] --terminal
-$CMUX_TUI_TERMINAL_ID` on the machine's own session. The daemon appends it to
+running `cmux-tui --session cloud --quiet notify …` with the arguments untouched
+(`--quiet` is dropped when the caller passes `--json` or `--jsonl`); the
+daemon's `notify` verb owns the macOS signature (subtitle, scoped `--clear`,
+`--reply` refused, `CMUX_TUI_TERMINAL_ID` as the caller terminal). The daemon appends it to
 its durable notification ledger and the v2 `session.events` stream carries it
 as a delta:
 
