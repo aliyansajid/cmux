@@ -62,7 +62,8 @@ struct CloudSidebarScaleTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         let coordinator = CloudTreeOutlineView.Coordinator(
             machineActions: Self.machineActions, nodeActions: Self.nodeActions,
-            expansionStore: CloudTreeExpansionStore(defaults: defaults)
+            expansionStore: CloudTreeExpansionStore(defaults: defaults),
+            tabDragTransferRegistry: { nil }
         )
         let container = CloudTreeContainerView(coordinator: coordinator)
         container.frame = NSRect(x: 0, y: 0, width: 360, height: CGFloat(workspaceCount + 1) * 36)
@@ -149,7 +150,7 @@ struct CloudSidebarScaleTests {
     }
 
     private static let machineActions = MachineRowActions(
-        setupVPN: { _ in }, openShell: { _ in }, openDesktop: { _ in }, runCommand: { _, _ in },
+        openShell: { _ in }, openDesktop: { _ in }, runCommand: { _, _ in },
         confirmDelete: { _ in }, promptRename: { _, _ in }, resizeDisk: { _, _ in }, promptUpgrade: {}
     )
     private static let nodeActions = CloudTreeNodeActions(
