@@ -3205,17 +3205,16 @@ mod tests {
                 "{scheme}"
             );
         }
-        if cfg!(feature = "iroh-transport") {
-            assert_eq!(
-                providers.supported_client_auth("iroh").unwrap(),
-                SupportedClientAuthModes::DeviceOnly
-            );
-        } else {
-            assert!(matches!(
-                providers.supported_client_auth("iroh"),
-                Err(ProviderError::UnsupportedScheme(scheme)) if scheme == "iroh"
-            ));
-        }
+        #[cfg(feature = "iroh-transport")]
+        assert_eq!(
+            providers.supported_client_auth("iroh").unwrap(),
+            SupportedClientAuthModes::DeviceOnly
+        );
+        #[cfg(not(feature = "iroh-transport"))]
+        assert!(matches!(
+            providers.supported_client_auth("iroh"),
+            Err(ProviderError::UnsupportedScheme(scheme)) if scheme == "iroh"
+        ));
         assert_eq!(
             providers.supported_client_auth("ssh").unwrap(),
             SupportedClientAuthModes::DeviceOrCarrier
