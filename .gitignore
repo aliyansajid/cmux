@@ -10,7 +10,6 @@ xcuserdata/
 .DS_Store
 
 # Local env
-.env
 .envrc
 !web/.envrc
 ios/Config/AppStoreConnect.local.plist
@@ -19,6 +18,7 @@ ios/Config/AppStoreConnect.local.plist
 .swiftpm/
 .ci-source-packages/
 .ci-reload-derived-data/
+.glaeda/
 
 # GhosttyKit binary (built from ghostty submodule via scripts/setup.sh)
 GhosttyKit.xcframework
@@ -78,3 +78,4 @@ tmux-*.log
 # Remote-only Blacksmith cmux-tui benchmark output
 /testbox-benchmark/
 /.cmux-scratch/
+config.bat
